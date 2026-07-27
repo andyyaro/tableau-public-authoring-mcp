@@ -213,6 +213,10 @@ tableau-public-authoring doctor
 }
 ```
 
+Paths may be relative to a single `base_dir` instead of absolute — and a relative
+path is *confined* to that directory, which an absolute path is not. See
+`docs/AUTHORING_SPEC.md`.
+
 Then: `validate_workbook_spec` (dry run) → `build_workbook` →
 `validate_in_tableau_public` → `publish_to_tableau_public`.
 

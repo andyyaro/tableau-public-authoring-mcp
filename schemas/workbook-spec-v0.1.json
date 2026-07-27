@@ -16,6 +16,13 @@
       "const": "0.1",
       "default": "0.1"
     },
+    "base_dir": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Absolute directory that every RELATIVE path in this spec is resolved against. Optional: paths may instead be absolute. A relative path is also required to stay inside base_dir after resolution, so it can address nothing outside it -- which is why relative paths are accepted at all. Relative paths are never resolved against the working directory, because an MCP server inherits that from whichever client launched it."
+    },
     "workbook": {
       "type": "object",
       "additionalProperties": false,
@@ -313,8 +320,8 @@
     },
     "filesystemPath": {
       "type": "string",
-      "pattern": "^[/~]",
-      "description": "An absolute path, or a '~' path the server expands. Traversal segments ('..') and null bytes are rejected, and an input file must exist, be a regular file and be under the CSV size caps."
+      "minLength": 1,
+      "description": "An absolute path, a '~' path the server expands, or a path relative to the spec's 'base_dir'. Traversal segments ('..') and null bytes are rejected; a relative path must additionally resolve inside base_dir, and an input file must exist, be a regular file and be under the size caps."
     },
     "datatype": {
       "enum": [

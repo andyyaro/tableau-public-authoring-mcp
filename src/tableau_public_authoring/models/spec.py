@@ -21,7 +21,13 @@ from typing import Any
 
 from ..compiler.fields import VALID_DATATYPES, Field, infer_fields, role_and_type
 from ..compiler.ids import calculation_name
-from ..security.paths import resolve_input_file, resolve_output_dir
+from ..security.paths import (
+    PathSecurityError,
+    default_base_dir,
+    resolve_base_dir,
+    resolve_input_file,
+    resolve_output_dir,
+)
 
 SPEC_VERSION = "0.1"
 
@@ -58,6 +64,7 @@ AGGREGATIONS = ("Sum", "Avg", "Min", "Max", "Count", "CountD", "None", "Attribut
 # tuple keeps the published file's diffs stable where a set would not.
 TOP_LEVEL_KEYS = (
     "spec_version",
+    "base_dir",
     "workbook",
     "data_sources",
     "calculated_fields",
@@ -383,6 +390,10 @@ class WorkbookSpec:
     data_sources: list[DataSourceSpec]
     worksheets: list[Worksheet]
     output_dir: Path
+    #: Absolute anchor for every relative path in the spec, or None when all
+    #: paths were absolute. A relative path is resolved against this AND required
+    #: to stay inside it, so it can address nothing the author did not put here.
+    base_dir: Path | None = None
     dashboards: list[Dashboard] = dc_field(default_factory=list)
     package_twbx: bool = True
     spec_version: str = SPEC_VERSION
@@ -485,6 +496,23 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
     unknown = set(raw) - set(TOP_LEVEL_KEYS)
     _require(not unknown, f"unknown top-level keys: {sorted(unknown)}")
 
+    # Resolved before anything that takes a path, because it is the anchor they
+    # are all measured from. None means "every path must be absolute"; a relative
+    # path then fails with a message naming this key rather than silently
+    # resolving against whatever directory the MCP client was launched in.
+    base_raw = raw.get("base_dir")
+    if base_raw is None:
+        base_dir = default_base_dir()
+    else:
+        _require(
+            isinstance(base_raw, str),
+            f"'base_dir' must be a string, got {type(base_raw).__name__}",
+        )
+        try:
+            base_dir = resolve_base_dir(base_raw)
+        except PathSecurityError as exc:
+            raise SpecError(f"base_dir: {exc}") from exc
+
     version = raw.get("spec_version", SPEC_VERSION)
     _require(
         version == SPEC_VERSION,
@@ -515,7 +543,7 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         seen_ds.add(ds_id)
         ds_type = d.get("type", "csv")
         _require(ds_type == "csv", f"{ctx}: only type 'csv' is supported in v{SPEC_VERSION}")
-        path = resolve_input_file(d.get("path", ""), must_suffix=".csv")
+        path = resolve_input_file(d.get("path", ""), must_suffix=".csv", base_dir=base_dir)
         data_sources.append(DataSourceSpec(id=ds_id, path=path, fields=infer_fields(path)))
 
     ds_by_id = {d.id: d for d in data_sources}
@@ -860,7 +888,7 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
     unknown = set(out) - set(OUTPUT_KEYS)
     _require(not unknown, f"output: unknown keys {sorted(unknown)}")
     _require("directory" in out, "output.directory is required")
-    out_dir = resolve_output_dir(out["directory"])
+    out_dir = resolve_output_dir(out["directory"], base_dir=base_dir)
     package = out.get("package_twbx", True)
     _require(
         isinstance(package, bool),
@@ -873,6 +901,7 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         data_sources=data_sources,
         worksheets=worksheets,
         output_dir=out_dir,
+        base_dir=base_dir,
         dashboards=dashboards,
         package_twbx=package,
     )
@@ -958,6 +987,18 @@ def spec_json_schema() -> dict[str, Any]:
         "required": ["workbook", "data_sources", "worksheets", "output"],
         "properties": {
             "spec_version": {"const": SPEC_VERSION, "default": SPEC_VERSION},
+            "base_dir": {
+                "type": ["string", "null"],
+                "description": (
+                    "Absolute directory that every RELATIVE path in this spec is "
+                    "resolved against. Optional: paths may instead be absolute. A "
+                    "relative path is also required to stay inside base_dir after "
+                    "resolution, so it can address nothing outside it -- which is why "
+                    "relative paths are accepted at all. Relative paths are never "
+                    "resolved against the working directory, because an MCP server "
+                    "inherits that from whichever client launched it."
+                ),
+            },
             "workbook": {
                 "type": "object",
                 "additionalProperties": False,
@@ -1177,11 +1218,13 @@ def spec_json_schema() -> dict[str, Any]:
             },
             "filesystemPath": {
                 "type": "string",
-                "pattern": PATH_PATTERN_JSON,
+                "minLength": 1,
                 "description": (
-                    "An absolute path, or a '~' path the server expands. Traversal "
-                    "segments ('..') and null bytes are rejected, and an input file must "
-                    "exist, be a regular file and be under the CSV size caps."
+                    "An absolute path, a '~' path the server expands, or a path "
+                    "relative to the spec's 'base_dir'. Traversal segments ('..') and "
+                    "null bytes are rejected; a relative path must additionally resolve "
+                    "inside base_dir, and an input file must exist, be a regular file "
+                    "and be under the size caps."
                 ),
             },
             "datatype": {"enum": list(VALID_DATATYPES)},

@@ -24,6 +24,7 @@ silently dropped.
 |---|---|---|
 | `spec_version` | no | must be `"0.1"` |
 | `workbook` | yes | `{ name, description? }` |
+| `base_dir` | no | Absolute directory that every **relative** path in the spec is measured from. See below. |
 | `data_sources` | yes | one or more CSV sources |
 | `calculated_fields` | no | Tableau formula syntax |
 | `worksheets` | yes | one or more |
@@ -148,6 +149,39 @@ A zone references its worksheet by bare name; there is no id behind it, so an
 unresolvable name would produce a file that loads without complaint and draws an
 empty box. That is why the reference is checked in layer 1 *and* again against
 the generated file in layer 2 (`validation.structure.unresolved_zone_worksheet`).
+
+## Paths
+
+Every path may be absolute, a `~` path, or **relative to `base_dir`**:
+
+```json
+{
+  "base_dir": "/Users/you/analysis",
+  "data_sources": [{ "id": "sites", "type": "csv", "path": "data/sites.csv" }],
+  "output": { "directory": "out" }
+}
+```
+
+That is the ergonomic reason — one absolute path instead of N. The security
+property runs the other way, and is why relative paths are accepted at all:
+
+> **A relative path is contained. An absolute path is not.**
+
+A relative path is resolved against `base_dir` and then required to still be
+inside it, so it can address nothing the spec author did not put there. The
+check runs **after** symlinks are resolved, so `data/../../etc/passwd` and a
+symlink inside the base pointing out of it are both rejected. An absolute path
+keeps its existing meaning and reach — confining it would silently break specs
+that mix the two.
+
+A relative path with no `base_dir` is an error. It is never resolved against the
+process working directory: an MCP server inherits that from whichever client
+launched it, so the same spec would address different files on different
+machines. Set `base_dir` in the spec, or `TABLEAU_MCP_WORKSPACE` in the
+environment to supply a default.
+
+Setting `TABLEAU_MCP_WORKSPACE` and using only relative paths is the strongest
+posture available: nothing outside that directory is reachable.
 
 ## Validation
 

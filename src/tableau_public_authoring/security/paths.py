@@ -25,6 +25,23 @@ Callers who want the guarantee the threat model describes can set
 When it is set, every input file and every output directory must resolve inside
 one of them, and the comparison is against the **resolved** path, so a symlink
 sitting inside an allowed root but pointing outside it is rejected.
+
+**Relative paths and ``base_dir``.** A spec may declare one absolute
+``base_dir``; every relative path in it resolves against that directory. This
+exists for ergonomics — it turns N absolute paths into one — but the security
+property runs the other way, and is the reason relative paths are accepted at
+all: a relative path is **contained**. It is resolved against the base and then
+required to still be inside it, so it can address nothing outside, whereas an
+absolute path may address anything on the machine. The containment check is
+mandatory for relative paths, unlike ``TABLEAU_MCP_ALLOWED_ROOTS``, and it runs
+**post-resolve**, so ``data/../../etc/passwd`` and a symlink inside the base
+pointing out of it are both rejected.
+
+A relative path with no base is an error, never a fall back to the process
+working directory. This server is launched by an MCP client, so its CWD is
+whatever directory that client happened to be started in — resolving against it
+would make the same spec mean different files on different machines, which is
+both a correctness bug and a way to read something the author never named.
 """
 
 from __future__ import annotations
@@ -41,6 +58,12 @@ MAX_CSV_COLUMNS = 256
 #: must live inside. Unset (the default) means "no containment", which is what
 #: this project shipped with; see the module docstring.
 ALLOWED_ROOTS_ENV = "TABLEAU_MCP_ALLOWED_ROOTS"
+
+#: Default ``base_dir`` when a spec does not declare one. Lets an operator make
+#: every spec relative-only, which is the strongest posture available here: with
+#: it set and no absolute paths in the spec, nothing outside this directory is
+#: reachable.
+WORKSPACE_ENV = "TABLEAU_MCP_WORKSPACE"
 
 # Absolute locations no generated artifact may be written into. These are
 # prefixes, matched component-wise so "/usrX" is not treated as being under
@@ -145,12 +168,64 @@ def _forbidden_write_locations() -> list[str]:
     return locations
 
 
+def default_base_dir() -> Path | None:
+    """The workspace root from the environment, if the operator set one."""
+    raw = os.environ.get(WORKSPACE_ENV, "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve(strict=False)
+
+
+def resolve_base_dir(raw: str) -> Path:
+    """Validate a spec's ``base_dir``. Must be an existing absolute directory."""
+    if not raw or not isinstance(raw, str):
+        raise PathSecurityError("base_dir must be a non-empty string")
+    if "\x00" in raw:
+        raise PathSecurityError("base_dir contains a null byte")
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        raise PathSecurityError(
+            f"base_dir must be absolute, got: {raw!r}. It is the anchor every relative "
+            f"path in the spec is measured from, so it cannot itself be relative."
+        )
+    resolved = p.resolve(strict=False)
+    if not resolved.is_dir():
+        raise PathSecurityError(f"base_dir is not an existing directory: {resolved}")
+    _assert_within_allowed_roots(resolved, "base_dir")
+    return resolved
+
+
+def _anchor(raw: str, base_dir: Path | None, what: str) -> tuple[Path, Path | None]:
+    """Turn a possibly-relative path into an absolute one, and say what contains it.
+
+    Returns ``(path, containing_root)``. ``containing_root`` is non-None only for
+    a path that was relative, and the caller MUST then assert containment against
+    it post-resolve. Absolute paths are returned unchanged with no root, which
+    preserves the pre-existing behaviour exactly.
+    """
+    p = Path(raw).expanduser()
+    if p.is_absolute():
+        return p, None
+    base = base_dir if base_dir is not None else default_base_dir()
+    if base is None:
+        raise PathSecurityError(
+            f"{what} is relative ({raw!r}) but the spec declares no 'base_dir', so there "
+            f"is nothing to resolve it against. Either give an absolute path, set "
+            f"'base_dir' to the directory the relative paths are measured from, or set "
+            f"{WORKSPACE_ENV} in the environment. It is deliberately NOT resolved "
+            f"against the working directory: an MCP server inherits that from whichever "
+            f"client launched it, so the same spec would mean different files."
+        )
+    return base / p, base
+
+
 def resolve_input_file(
     raw: str,
     *,
     must_suffix: str | None = None,
     suffixes: tuple[str, ...] | None = None,
     max_bytes: int | None = None,
+    base_dir: Path | None = None,
 ) -> Path:
     """Resolve an input file path, rejecting traversal and non-regular files.
 
@@ -168,12 +243,10 @@ def resolve_input_file(
     if "\x00" in raw:
         raise PathSecurityError("path contains a null byte")
 
-    p = Path(raw).expanduser()
-    if not p.is_absolute():
-        raise PathSecurityError(f"path must be absolute, got: {raw!r}")
-
     if ".." in Path(raw).parts:
         raise PathSecurityError("path must not contain '..' segments")
+
+    p, contained_by = _anchor(raw, base_dir, "path")
 
     # resolve() collapses '..' and follows symlinks, so everything below —
     # including the allowlist — is asserted about the file that will actually be
@@ -184,6 +257,20 @@ def resolve_input_file(
         raise PathSecurityError(f"file does not exist: {resolved}")
     if not resolved.is_file():
         raise PathSecurityError(f"not a regular file: {resolved}")
+
+    # MANDATORY for a relative path, and post-resolve so a symlink inside the
+    # base pointing out of it is caught. This is why relative paths are safe to
+    # accept at all: unlike an absolute path, one cannot address anything the
+    # spec author did not put inside the base.
+    if contained_by is not None:
+        try:
+            assert_within(contained_by, resolved)
+        except PathSecurityError as exc:
+            raise PathSecurityError(
+                f"relative path {raw!r} resolves to {resolved}, outside its base_dir "
+                f"{contained_by}. A relative path may not escape the directory it is "
+                f"measured from."
+            ) from exc
 
     _assert_within_allowed_roots(resolved, "input file")
 
@@ -209,7 +296,7 @@ def resolve_input_file(
     return resolved
 
 
-def resolve_output_dir(raw: str) -> Path:
+def resolve_output_dir(raw: str, *, base_dir: Path | None = None) -> Path:
     """Resolve (and create) an output directory, rejecting traversal.
 
     The blocklist runs **before** ``mkdir``, so a refused location is never
@@ -220,13 +307,25 @@ def resolve_output_dir(raw: str) -> Path:
     if "\x00" in raw:
         raise PathSecurityError("path contains a null byte")
 
-    p = Path(raw).expanduser()
-    if not p.is_absolute():
-        raise PathSecurityError(f"output directory must be absolute, got: {raw!r}")
     if ".." in Path(raw).parts:
         raise PathSecurityError("path must not contain '..' segments")
 
+    p, contained_by = _anchor(raw, base_dir, "output directory")
     resolved = p.resolve(strict=False)
+
+    # Containment first: a refused location must not be created as a side effect
+    # of being refused, and that applies to escaping the base as much as to the
+    # system blocklist below.
+    if contained_by is not None:
+        try:
+            assert_within(contained_by, resolved)
+        except PathSecurityError as exc:
+            raise PathSecurityError(
+                f"relative output directory {raw!r} resolves to {resolved}, outside its "
+                f"base_dir {contained_by}. A relative path may not escape the directory "
+                f"it is measured from."
+            ) from exc
+
     target = str(resolved)
     for forbidden in _forbidden_write_locations():
         if _is_under(forbidden, target):

@@ -61,6 +61,15 @@ resolved; the CSV must exist, be a regular file, and have a `.csv` suffix; the
 output directory must be creatable and writable. Traversal segments are rejected
 before any I/O.
 
+**Containment.** A path relative to the spec's `base_dir` is additionally
+required to resolve *inside* it, checked post-`resolve()` so a symlink within the
+base pointing outside is rejected. Relative paths are therefore the stricter of
+the two forms: an absolute path may still address anything the user's account
+can read, which is deliberate — reading the user's own data from wherever they
+keep it is the tool's job. `TABLEAU_MCP_ALLOWED_ROOTS` constrains absolute paths
+too; `TABLEAU_MCP_WORKSPACE` supplies a default base so a deployment can require
+relative paths throughout.
+
 ### T4 — Shell injection through automation
 Worksheet or workbook names flow into AppleScript sent to `osascript`.
 
