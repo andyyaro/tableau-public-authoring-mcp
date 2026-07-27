@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -320,7 +321,28 @@ async def _dispatch(name: str, args: dict[str, Any]) -> list[TextContent]:
         return _ok({"inspection": inspect_twbx(p)})
 
     if name == "get_tableau_public_app_status":
-        return _ok({"status": app.status().to_dict()})
+        # The preflight is included because every environmental prerequisite of
+        # this server fails SILENTLY: no Quartz means Tableau appears to have no
+        # windows, no Screen Recording means blank screenshots, no Accessibility
+        # means keystrokes that go nowhere. Without this, a caller sees a symptom
+        # ("no document window matching X") three layers from the cause and has
+        # no way to reach the diagnosis from inside the conversation.
+        from .doctor import run as run_preflight
+
+        report = run_preflight()
+        return _ok(
+            {
+                "status": app.status().to_dict(),
+                "preflight": {
+                    "ready": not report.failed,
+                    "checks": [
+                        {"name": c.name, "state": c.state, "detail": c.detail, "fix": c.fix}
+                        for c in report.checks
+                    ],
+                    "blocking": [c.name for c in report.failed],
+                },
+            }
+        )
 
     if name == "open_in_tableau_public":
         # This hands a caller-supplied path straight to `open -a Tableau`. It
@@ -455,7 +477,31 @@ async def _serve() -> None:
 
 
 def main() -> None:
+    """Entry point. No arguments runs the stdio server, which is how an MCP
+    client invokes it; that behaviour is unchanged and must stay the default.
+
+    ``doctor`` exists because every environmental prerequisite of this server
+    fails silently at runtime, and diagnosing that from inside an MCP
+    conversation means reading a symptom three layers from the cause.
+    """
     import asyncio
+
+    argv = sys.argv[1:]
+    if argv and argv[0] in ("doctor", "--doctor", "check"):
+        from .doctor import main as doctor_main
+
+        raise SystemExit(doctor_main(argv[1:]))
+    if argv and argv[0] in ("-h", "--help"):
+        print(
+            "tableau-public-authoring\n\n"
+            "  (no arguments)   run the MCP stdio server (how an MCP client starts it)\n"
+            "  doctor           check this machine can actually run it, and say what to fix\n"
+            "  --version        print the server version\n"
+        )
+        raise SystemExit(0)
+    if argv and argv[0] in ("--version", "-V"):
+        print(f"{SERVER_NAME} {SERVER_VERSION}")
+        raise SystemExit(0)
 
     asyncio.run(_serve())
 

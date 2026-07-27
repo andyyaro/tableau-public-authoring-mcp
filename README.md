@@ -110,33 +110,85 @@ Tableau Public 2026.2.0 on macOS**, not merely by producing XML.
 2. **Tableau Public rejects non-extract data sources** (`Error Code: 3C242D89`).
    Every CSV is therefore converted to a Hyper extract at build time.
 
-## Requirements
-
-- macOS with Tableau Public installed (developed against 2026.2.0, Apple silicon)
-- Python ≥ 3.10, [`uv`](https://docs.astral.sh/uv/)
-- macOS **Accessibility** permission for the process running this server
-- macOS **Screen Recording** permission (for validation screenshots)
-
-See `docs/MACOS_PERMISSIONS.md`.
-
 ## Install
 
 ```bash
-git clone <this repo> ~/dev/mcp-tableau-public-authoring
-cd ~/dev/mcp-tableau-public-authoring
-uv venv && uv sync && uv pip install -e .
+uv tool install git+https://github.com/andyyaro/tableau-public-authoring-mcp
+tableau-public-authoring doctor
 ```
 
-## Register with Claude Code
+No clone, no virtualenv, no paths to edit. `doctor` checks everything the server
+needs and prints exactly what to fix — run it **before** registering, because
+every prerequisite below fails *silently* at runtime rather than raising:
+
+```
+  [PASS] platform          macOS
+  [PASS] python            3.13.14 at ~/.local/share/uv/tools/…/bin/python
+  [PASS] mcp sdk           importable
+  [PASS] tableauhyperapi   importable
+  [PASS] quartz (pyobjc)   importable
+  [PASS] tableau public    2026.2.0 at /Applications/Tableau Public.app
+  [PASS] accessibility     granted to this process
+  [PASS] screen recording  capture succeeded
+```
+
+| Missing | What you would actually see |
+|---|---|
+| Quartz | Tableau appears to have no windows open; publishing says "no document window matching …" |
+| Screen Recording | validation screenshots come back blank, with no error |
+| Accessibility | keystrokes and clicks go nowhere |
+| tableauhyperapi | no workbook can be built at all |
+
+macOS permissions are granted **per executable**, so grant them to the
+interpreter `doctor` prints — not to Tableau, and not to your terminal if you
+register a different one. Details in `docs/MACOS_PERMISSIONS.md`.
+
+Requirements: macOS with Tableau Public installed (developed against 2026.2.0,
+Apple silicon), Python ≥ 3.10, and [`uv`](https://docs.astral.sh/uv/).
+
+### Register with Claude Code
 
 ```bash
 claude mcp add --transport stdio --scope user tableau-public-authoring \
-  -- /Users/<you>/dev/mcp-tableau-public-authoring/.venv/bin/python \
-     -m tableau_public_authoring.server
+  -- tableau-public-authoring
 ```
 
-Registering this server does **not** affect any existing MCP. Verify with
-`claude mcp list`. A Claude Code restart is required before the new tools appear.
+That is the whole command — `uv tool install` puts the executable on your PATH
+at a stable location, so there is no absolute path to substitute and it survives
+upgrades. Registering does **not** affect any other MCP server; verify with
+`claude mcp list`. Restart Claude Code before the tools appear.
+
+<details>
+<summary>Installing from a clone instead (for development)</summary>
+
+```bash
+git clone https://github.com/andyyaro/tableau-public-authoring-mcp
+cd tableau-public-authoring-mcp
+uv venv && uv sync && uv pip install -e .
+uv run tableau-public-authoring doctor
+```
+
+Register that build by pointing at its interpreter explicitly:
+
+```bash
+claude mcp add --transport stdio --scope user tableau-public-authoring \
+  -- /absolute/path/to/.venv/bin/python -m tableau_public_authoring.server
+```
+
+Avoid `uvx --from …` for the registered server: it runs from a
+content-hashed cache path that **changes whenever a dependency changes**, and the
+macOS permission grants are tied to that path — so the server would quietly lose
+Accessibility and Screen Recording on the next upgrade. It is fine for one-off
+use such as `uvx --from … tableau-public-authoring doctor`.
+
+</details>
+
+## Upgrading
+
+```bash
+uv tool upgrade tableau-public-authoring
+tableau-public-authoring doctor
+```
 
 ## Build a workbook
 

@@ -17,6 +17,15 @@ dependencies = [
     # `uv sync && uv run pytest` fail on a clean checkout.
     # Floor = the version this project has actually been verified against.
     "tableauhyperapi>=0.0.25080",
+    # RUNTIME, not test-only. Window discovery, the publish flow and every
+    # screenshot go through CoreGraphics; see desktop/window_control.py and
+    # publishing/publisher.py. It lived in the dev group, which made the server
+    # *silently* half-dead when installed for real use: quartz_windows() catches
+    # the ImportError and returns [], so Tableau appears to have no windows and
+    # validation and publishing fail with "no document window matching ...".
+    # The marker keeps a non-macOS resolve working; the server is macOS-only
+    # anyway because it drives the desktop app.
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
@@ -34,11 +43,6 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
-    # The live tier enumerates and screenshots Tableau's windows through
-    # CoreGraphics. Every import of it is lazy, so the unit tier runs without it
-    # and the tier itself skips when it is absent; the marker keeps a non-macOS
-    # `uv sync` resolvable, since these wheels exist only for darwin.
-    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]
 
 [tool.pytest.ini_options]

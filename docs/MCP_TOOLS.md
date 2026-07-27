@@ -93,3 +93,21 @@ publish_to_tableau_public  { dry_run: true }   -> review
 publish_to_tableau_public  { confirm_publish: true }
 verify_published_workbook
 ```
+
+
+## Preflight
+
+`get_tableau_public_app_status` returns a `preflight` block alongside the app
+status: every environmental prerequisite, its state, and how to fix it.
+
+It is there because all of those prerequisites fail *silently*. Without Quartz,
+Tableau appears to have no windows and publishing reports "no document window
+matching …". Without Screen Recording, validation screenshots are blank with no
+error. A caller seeing those symptoms has no way to reach the cause otherwise.
+
+The same report is available from a terminal, before the server is registered
+with anything:
+
+```bash
+tableau-public-authoring doctor
+```
