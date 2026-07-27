@@ -75,15 +75,29 @@ calls `window_control.close_all_generated(["LiveTest"])`, which only ever matche
 document windows whose title stem *starts with* that prefix. Your own workbooks
 are never candidates — **so do not name a real workbook `LiveTest...`**.
 
+Teardown passes `known_paths`, the stem-to-file map it built while running, so a
+minimised workbook can be raised with `open -a` instead of by clicking its Dock
+tile. Supplying the path is the more reliable of the two routes.
+
+The final line reports against what is **still open**, not against what teardown
+attempted, and it accounts for every workbook the run created: some are closed by
+teardown and the rest were already closed by the time it ran. An earlier version
+counted destroyed windows as open and announced eight failures for nine
+successful closes — see limitation 10 in `docs/LIMITATIONS.md`.
+
 This cleanup is not tidiness. A session that left roughly eighteen workbooks open
 wedged Tableau to the point where it stopped accepting new documents, which looks
 exactly like a compiler bug until you count the windows. The tier also refuses to
 open more than `MAX_LIVE_WORKBOOKS` (12) in one run rather than wedge the app
 halfway through.
 
-If teardown reports `COULD NOT CLOSE`, close those windows in Tableau by hand
-before the next run. The most likely reason is Tableau asking whether to save —
-this project never answers that prompt, because "Don't Save" destroys work.
+If teardown reports workbooks still open, close them in Tableau by hand before the
+next run. The most likely reason is Tableau asking whether to save — this project
+never answers that prompt, because "Don't Save" destroys work.
+
+Tableau opens a fresh blank `Book<N>` whenever it closes the last visible document,
+so a run leaves a handful of empty start-page windows behind. They are not part of
+this tier's cleanup contract, which touches only what it created.
 
 ## How "not blank" is decided
 

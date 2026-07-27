@@ -150,7 +150,10 @@ class LiveEnvironment:
     output_dir: Path
     screenshot_dir: Path
     csv: Path
-    opened: list[str] = field(default_factory=list)
+    # stem -> the file it was opened from. Teardown needs the path, not just the
+    # name: a workbook Tableau has minimised off-screen has no tile to click and
+    # can only be raised by re-opening its file.
+    opened: dict[str, Path] = field(default_factory=dict)
 
     def workbook_name(self, slug: str) -> str:
         """A workbook name unique to this run.
@@ -218,21 +221,39 @@ def live_env(tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRe
     # ---- teardown: close ONLY our own workbooks -----------------------------
     if not env.opened:
         return
-    say(f"[live] closing {len(env.opened)} generated workbook(s) with prefix {LIVE_PREFIX!r}")
+    say(f"[live] cleaning up {len(env.opened)} generated workbook(s) with prefix {LIVE_PREFIX!r}")
     try:
-        result = window_control.close_all_generated([LIVE_PREFIX], dry_run=False)
+        result = window_control.close_all_generated(
+            [LIVE_PREFIX], dry_run=False, known_paths=dict(env.opened)
+        )
     except Exception as exc:  # noqa: BLE001 - teardown must never mask a test result
         say(f"[live] CLEANUP FAILED ({type(exc).__name__}: {exc}). Close them by hand.")
         return
     for entry in result.get("closed", []):
         say(f"[live]   closed {entry['stem']}")
+    # Scoped to this run: close_all_generated reports husks for every run that ever
+    # used this prefix, and a count larger than the number opened reads as a bug.
+    already = [s for s in result.get("already_closed", []) if s in env.opened]
+    if already:
+        say(f"[live]   already closed before teardown: {len(already)} ({', '.join(already)})")
     for entry in result.get("failed", []):
         say(f"[live]   COULD NOT CLOSE {entry['stem']}: {entry['reason']}")
-    if result.get("failed"):
+
+    # Report against what is actually still open, not against what was attempted.
+    # An earlier version counted destroyed windows as open and declared every
+    # successful close a failure, so the check that matters is this one.
+    leftover = sorted(
+        d.workbook_stem
+        for d in window_control.document_windows()
+        if (d.workbook_stem or "").startswith(LIVE_PREFIX)
+    )
+    if leftover:
         say(
-            "[live] leftover LiveTest_* windows will slow the next run down; close them in "
-            "Tableau before re-running."
+            f"[live] {len(leftover)} workbook(s) still open: {leftover}. They will slow the "
+            f"next run down; close them in Tableau before re-running."
         )
+    else:
+        say(f"[live] all {len(env.opened)} generated workbook(s) are closed")
 
 
 @pytest.fixture(scope="session")
@@ -359,14 +380,14 @@ def open_and_capture(live_env: LiveEnvironment) -> Callable[..., LiveRender]:
             pytest.fail(
                 f"refusing to open more than {MAX_LIVE_WORKBOOKS} workbooks in one session: "
                 f"Tableau stops accepting new documents long before this and every later "
-                f"result would be meaningless. Already opened: {live_env.opened}"
+                f"result would be meaningless. Already opened: {sorted(live_env.opened)}"
             )
 
         started = time.monotonic()
         build = build_workbook(spec)
         target = build.twbx_path or build.twb_path
         stem = target.stem
-        live_env.opened.append(stem)
+        live_env.opened[stem] = target
 
         result = tableau_app.open_workbook(target, timeout=open_timeout)
         if not result["opened"]:

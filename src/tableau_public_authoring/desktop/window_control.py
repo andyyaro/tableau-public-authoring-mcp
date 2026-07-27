@@ -19,12 +19,40 @@ WHY IT LOOKS LIKE THIS (each point cost real debugging time; do not "simplify")
    windows visibly open. AX can neither enumerate nor raise them, which rules out
    the ordinary ``AXRaise`` / ``AXMinimized = false`` approach entirely.
 3. Window discovery therefore uses ``CGWindowListCopyWindowInfo``.
-   ``kCGWindowListOptionOnScreenOnly`` omits minimized windows, while
-   ``kCGWindowListOptionAll`` still lists them — the difference between the two
-   lists is itself the most reliable minimized signal available.
-4. Tableau's **Window menu lists worksheets, not documents**, so it cannot be used
+   ``kCGWindowListOptionOnScreenOnly`` is the list of windows that actually exist;
+   ``kCGWindowListOptionAll`` additionally returns **destroyed** windows that the
+   window server has not yet reaped. See STALE WINDOWS below — this was originally
+   documented here as a minimized-window signal, which is wrong and caused two
+   separate bugs.
+4. A minimized Tableau document keeps a **Dock tile**, and that tile *is* on
+   screen. So the on-screen list is sufficient to find minimized windows too, and
+   nothing legitimate is lost by ignoring the all-windows list.
+
+5. Tableau's **Window menu lists worksheets, not documents**, so it cannot be used
    to identify or select a workbook.
-5. Document windows are titled exactly ``Tableau Public - <workbook stem>``.
+6. Document windows are titled exactly ``Tableau Public - <workbook stem>``.
+
+STALE WINDOWS
+-------------
+Every workbook Tableau has *ever* opened leaves a husk behind: an entry that
+survives in ``kCGWindowListOptionAll`` after the document is closed, always with
+the exact bounds ``218x161 at (-234, 367)``. Directly observed: with one workbook
+open, the same title appeared twice — once live at ``1291x949 at (221, 33)`` and
+once as a husk — and a screenshot confirmed a single real window, with every other
+"open" workbook sitting in Tableau's *recent files* list.
+
+Twenty-six husks accumulated over two test runs, and they broke closing in two
+ways at once. Target selection picks the largest matching window, and a husk
+(218x161 = 35,098 px^2) outranks a live Dock tile (140x165 = 23,100 px^2), so the
+code aimed at the husk and reported a live workbook as "minimized off-screen with
+no tile to click". Worse, the post-close check asks whether any window with that
+title remains; the husk always does, so **every successful close was reported as a
+failure**. Teardown then left workbooks open that it had in fact already closed.
+
+Windows are therefore classified as stale when they appear only in the all-windows
+list, and :func:`document_windows` hides them by default. The cost is that a
+*hidden* Tableau (Command-H) looks like it has no documents; that is a safe
+failure, since every caller here refuses to act on a window it cannot find.
 
 SAFETY POSTURE
 --------------
@@ -37,7 +65,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -116,6 +144,16 @@ class WindowInfo:
     def area(self) -> float:
         return self.width * self.height
 
+    @property
+    def is_stale(self) -> bool:
+        """True when this is a husk of a window Tableau has already destroyed.
+
+        A live window is always composited — a full-size one directly, a minimized
+        one as its Dock tile — so anything the window server reports as off-screen
+        no longer exists. See the STALE WINDOWS note at the top of this module.
+        """
+        return not self.on_screen
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -128,6 +166,7 @@ class WindowInfo:
             "is_minimized": self.is_minimized,
             "is_document": self.is_document,
             "on_screen": self.on_screen,
+            "is_stale": self.is_stale,
         }
 
 
@@ -261,9 +300,22 @@ def classify_windows(*, enumerator: Enumerator | None = None) -> list[WindowInfo
     return out
 
 
-def document_windows(*, enumerator: Enumerator | None = None) -> list[WindowInfo]:
-    """Document windows only, frontmost first."""
-    return [w for w in classify_windows(enumerator=enumerator) if w.is_document]
+def document_windows(
+    *, enumerator: Enumerator | None = None, include_stale: bool = False
+) -> list[WindowInfo]:
+    """Open document windows, frontmost first.
+
+    Husks of closed documents are excluded unless ``include_stale`` is set, which
+    exists for diagnostics only. Including them is never right for deciding what to
+    click or close: a husk outranks a live Dock tile on area, and it never
+    disappears, so it defeats both target selection and close verification. See the
+    STALE WINDOWS note at the top of this module.
+    """
+    return [
+        w
+        for w in classify_windows(enumerator=enumerator)
+        if w.is_document and (include_stale or not w.is_stale)
+    ]
 
 
 def frontmost_document(*, enumerator: Enumerator | None = None) -> WindowInfo | None:
@@ -481,8 +533,12 @@ def close_document(
     raiser: Raiser | None = None,
     sleeper: Sleeper | None = None,
     settle: float = 1.5,
+    close_timeout: float = 12.0,
 ) -> tuple[bool, str]:
     """Close exactly one workbook window. Returns ``(closed, message)``.
+
+    ``settle`` is the interval between checks and ``close_timeout`` the total time
+    the window is given to disappear before the close is called a failure.
 
     Guarantees, in the order they are enforced:
 
@@ -529,6 +585,16 @@ def close_document(
                 f"{DOC_TITLE_PREFIX}{stem!r}. Closest open windows are {near}. Pass the exact "
                 f"stem — a partial match could close the wrong workbook."
             )
+        stale = [
+            d
+            for d in document_windows(enumerator=enumerator, include_stale=True)
+            if d.is_stale and normalise_stem(d.workbook_stem or "") == needle
+        ]
+        if stale:
+            return False, (
+                f"{stem!r} is not open: the window server still lists a destroyed window "
+                f"with that title, but the document itself is already closed. Nothing to do."
+            )
         return False, (
             f"no Tableau document window matching {stem!r}. "
             f"Currently open: {[d.workbook_stem for d in docs] or 'none'}"
@@ -569,22 +635,35 @@ def close_document(
         (key_sender or post_command_key)("w")
     except DesktopError as exc:
         return False, f"could not send Command-W to {target.title!r}: {exc}"
-    sleep(settle)
-
-    after = classify_windows(enumerator=enumerator)
-    prompt = detect_save_prompt(enumerator=lambda: [w.to_dict() for w in after])
-    if prompt is not None:
-        return False, (
-            f"BAILED OUT: Tableau is asking {prompt.title!r} about {target.workbook_stem!r}. "
-            f"This server will not answer a save prompt — 'Don't Save' would destroy unsaved "
-            f"work. The prompt is still on screen; answer it in Tableau."
-        )
-
-    still_open = [
-        w for w in after if w.is_document and normalise_stem(w.workbook_stem or "") == needle
-    ]
-    if not still_open:
-        return True, f"closed {target.title!r}"
+    # Poll rather than sample once. A single check after a fixed pause reported a
+    # closed workbook as still open whenever Tableau was slow, which it reliably is
+    # once a dozen documents are loaded.
+    waited = 0.0
+    while True:
+        sleep(settle)
+        waited += settle
+        after = classify_windows(enumerator=enumerator)
+        snapshot = [w.to_dict() for w in after]
+        prompt = detect_save_prompt(enumerator=lambda rows=snapshot: rows)
+        if prompt is not None:
+            return False, (
+                f"BAILED OUT: Tableau is asking {prompt.title!r} about {target.workbook_stem!r}. "
+                f"This server will not answer a save prompt — 'Don't Save' would destroy unsaved "
+                f"work. The prompt is still on screen; answer it in Tableau."
+            )
+        # Only live windows count. The husk this close just created carries the same
+        # title and never goes away, so counting it would fail every successful close.
+        still_open = [
+            w
+            for w in after
+            if w.is_document
+            and not w.is_stale
+            and normalise_stem(w.workbook_stem or "") == needle
+        ]
+        if not still_open:
+            return True, f"closed {target.title!r}"
+        if waited >= close_timeout:
+            break
 
     new_dialogs = [w.title for w in after if not w.is_document and w.id not in before]
     if new_dialogs:
@@ -594,8 +673,8 @@ def close_document(
             f"Resolve the dialog in Tableau, then re-run."
         )
     return False, (
-        f"Command-W was sent but {target.title!r} is still open. Nothing was forced. Close it "
-        f"in Tableau, or check that Tableau has Accessibility permission."
+        f"Command-W was sent but {target.title!r} was still open {waited:.0f}s later. Nothing "
+        f"was forced. Close it in Tableau, or check that Tableau has Accessibility permission."
     )
 
 
@@ -603,6 +682,7 @@ def close_all_generated(
     prefixes: Sequence[str],
     *,
     dry_run: bool = True,
+    known_paths: Mapping[str, Path] | None = None,
     enumerator: Enumerator | None = None,
     clicker: Clicker | None = None,
     key_sender: KeySender | None = None,
@@ -621,6 +701,15 @@ def close_all_generated(
     ``dry_run`` defaults to True and reports what *would* be closed without
     sending a single event: nothing calls the clicker or the key sender on that
     path. Pass ``dry_run=False`` only after reading the ``would_close`` list.
+
+    ``known_paths`` maps a workbook stem to the file it was opened from, and is
+    forwarded to :func:`close_document` as ``file_path``. Supply it whenever the
+    caller generated the workbooks itself. Without it, a workbook that Tableau has
+    minimised off-screen cannot be closed at all: raising a window works by
+    clicking its on-screen tile, and a minimised document offers none, so the only
+    reliable way back is ``open -a`` on the original path. Every such workbook is
+    otherwise reported in ``failed`` and left open, which degrades the app — Tableau
+    stops accepting new documents after roughly eighteen of them.
     """
     cleaned = [p for p in prefixes if p and p.strip()]
     if not cleaned:
@@ -646,12 +735,27 @@ def close_all_generated(
         else:
             matched.append(doc)
 
+    # Husks of workbooks that were already closed. Reported so a caller cleaning up
+    # after itself can see they were handled, rather than assuming they went missing.
+    live_stems = {normalise_stem(w.workbook_stem or "") for w in docs}
+    already_closed = sorted(
+        {
+            d.workbook_stem
+            for d in document_windows(enumerator=enumerator, include_stale=True)
+            if d.is_stale
+            and d.workbook_stem
+            and normalise_stem(d.workbook_stem) not in live_stems
+            and any(normalise_stem(d.workbook_stem).startswith(p) for p in normalised)
+        }
+    )
+
     result: dict = {
         "dry_run": dry_run,
         "prefixes": list(cleaned),
         "would_close": [w.workbook_stem for w in matched],
         "matched": [w.to_dict() for w in matched],
         "skipped": skipped,
+        "already_closed": already_closed,
         "closed": [],
         "failed": [],
         "notes": [],
@@ -664,6 +768,10 @@ def close_all_generated(
         )
         return result
 
+    # Look the path up by normalised stem: the caller keys this map by the name it
+    # built the file under, which need not match Tableau's window title byte for byte.
+    paths = {normalise_stem(k): v for k, v in (known_paths or {}).items()}
+
     # De-duplicate by stem: one workbook can own several windows (a Dock tile and a
     # restored window), and each stem is closed once.
     seen: set[str] = set()
@@ -675,6 +783,7 @@ def close_all_generated(
         seen.add(key)
         ok, message = close_document(
             stem,
+            file_path=paths.get(key),
             enumerator=enumerator,
             clicker=clicker,
             key_sender=key_sender,
@@ -691,4 +800,11 @@ def close_all_generated(
         f"closed {len(result['closed'])} of {len(seen)} matched workbook(s); "
         f"{len(result['failed'])} refused or bailed out."
     )
+    unmapped = [e["stem"] for e in result["failed"] if normalise_stem(e["stem"]) not in paths]
+    if unmapped:
+        result["notes"].append(
+            f"no file path was supplied for {unmapped}, so a minimised window could not be "
+            f"restored with `open -a`. Pass known_paths={{stem: path}} if you know where "
+            f"these came from."
+        )
     return result

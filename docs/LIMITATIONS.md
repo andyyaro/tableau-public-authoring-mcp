@@ -121,8 +121,37 @@ fallback. If Tableau changes that shortcut, the fallback is exercised again.
 ## 10. The window server keeps destroyed windows
 
 `kCGWindowListOptionAll` returns entries for windows that no longer exist. This
-caused two distinct bugs: a permanent false "sign-in required" (matching a 59x112
-husk of a closed sign-in window), and Save clicks aimed at a dialog that had already
-been replaced. Anything that decides whether a window *is currently showing* must
-use `kCGWindowListOptionOnScreenOnly` plus a plausible size threshold. Discovery
-(finding minimised windows) still needs the `All` list.
+caused **four** distinct bugs, and it is the single most expensive misunderstanding
+in this project.
+
+The first two were in the publisher: a permanent false "sign-in required" (matching
+a 59x112 husk of a closed sign-in window), and Save clicks aimed at a dialog that
+had already been replaced.
+
+The other two were in workbook cleanup, and came from a wrong belief written into
+`window_control` as documentation: that a window present in `All` but absent from
+`OnScreenOnly` is *minimised*. It is not — it is **destroyed**. Every workbook
+Tableau has ever opened leaves a husk at exactly `218x161` at `(-234, 367)`. A
+minimised document keeps a Dock tile, and that tile **is** on-screen, so the
+on-screen list alone finds minimised windows perfectly well.
+
+Because the code trusted the `All` list, cleanup:
+
+1. aimed at husks instead of live windows — target selection picks the largest
+   match, and a husk (35,098 px²) outranks a Dock tile (~23,000 px²), producing the
+   error "is minimized off-screen ... and offers no on-screen tile to click" about
+   workbooks that were open and perfectly reachable; and
+2. never believed a close had worked, because it checked whether a window with that
+   title still existed and the husk always does. **Every successful close was
+   reported as a failure.** A live run closed nine workbooks and reported eight of
+   them as errors.
+
+Proof: with one workbook open, the same title appeared twice — live at `1291x949`
+and as a husk — and a screenshot showed a single real Tableau window while Quartz
+reported twenty-six documents. Every workbook named in those errors was sitting in
+Tableau's *recent files* list.
+
+**Rule: `OnScreenOnly` is the list of windows that exist.** `document_windows()`
+hides stale entries by default; pass `include_stale=True` for diagnostics only. The
+one cost is that a hidden Tableau (Command-H) looks like it has no documents, which
+is a safe failure because every caller refuses to act on a window it cannot find.
