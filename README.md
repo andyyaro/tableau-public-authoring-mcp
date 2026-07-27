@@ -166,6 +166,14 @@ Then: `validate_workbook_spec` (dry run) → `build_workbook` →
 
 Full schema: `schemas/workbook-spec-v0.1.json` and `docs/AUTHORING_SPEC.md`.
 
+## Why things are the way they are
+
+Most of this codebase's shape is a response to something Tableau actually did.
+`docs/LIMITATIONS.md` lists the constraints; `docs/history/CHANGE_HISTORY.md`
+keeps the release write-ups, which record the failure each fix was responding to
+and what proved it fixed. `docs/fixtures/` holds the forensic analysis of a real
+published workbook that the compiler was reverse-engineered from.
+
 ## Publishing
 
 `publish_to_tableau_public` is marked destructive and requires both
