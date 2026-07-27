@@ -16,10 +16,10 @@ HOW THE LOOKUP WORKS
 --------------------
 Tableau Public has no supported REST API, but the profile page is backed by a
 public, unauthenticated JSON endpoint. The exact URL validated during
-development, against the real profile ``demo.analyst`` on
+development, against a real Tableau Public profile on
 2026-07-27, was::
 
-    https://public.tableau.com/public/apis/workbooks?profileName=demo.analyst&start=0&count=50&visibility=NON_HIDDEN
+    https://public.tableau.com/public/apis/workbooks?profileName=<profile>&start=0&count=50&visibility=NON_HIDDEN
 
 It returned HTTP 200 and a body shaped like::
 
@@ -146,7 +146,7 @@ def normalize_workbook_name(name: str) -> str:
     ===========================================  =========================================
     ``Card A -  Visuals1``                       ``CardA-Visuals1``
     ``AGA datathon visualizations - USAspend…``  ``AGAdatathonvisualizations-USAspend…``
-    ``Quarterly_Sales_Review``      ``Quarterly_Sales_Review``
+    ``Quarterly_Sales_Review``                   ``Quarterly_Sales_Review``
     ``Comet_DataRevelations_2019.1``             ``Comet_DataRevelations_2019_1``
     ``2.9 SuperStore Demo``                      ``2_9SuperStoreDemo``
     ``It's Groundhog Day...again``               ``ItsGroundhogDay___again``
@@ -303,7 +303,18 @@ def list_published_workbooks(profile: str, *, timeout: int = 25) -> list[Publish
 
     Raises ``ProfileLookupError`` rather than returning a partial or empty list
     when the lookup fails, so a caller can never mistake "we could not ask" for
-    "nothing is published".
+    "nothing is published". That applies to truncation too: an unrecognised
+    pagination cursor or a profile larger than the page budget raises instead of
+    quietly returning what it managed to read.
+
+    **Known blind spot.** The endpoint is queried with ``visibility=NON_HIDDEN``,
+    which is the only visibility value confirmed to work. A workbook the user has
+    HIDDEN from their profile still owns its repo URL, and Tableau's save flow
+    still matches it by name, so publishing that name would replace the hidden
+    workbook without this check ever seeing it. There is no known query parameter
+    that includes hidden workbooks, so this cannot currently be closed in code --
+    ``assert_safe_to_publish`` says so in its message rather than implying the
+    check is exhaustive.
     """
     if not profile or not isinstance(profile, str):
         raise ProfileLookupError("a Tableau Public profile name is required")
@@ -326,9 +337,29 @@ def list_published_workbooks(profile: str, *, timeout: int = 25) -> list[Publish
                 found.append(wb)
 
         next_index = payload.get("nextIndex", payload.get("next", -1))
-        if not isinstance(next_index, int) or next_index <= start or not contents:
+        if not contents:
             break
+        if next_index == -1 or (isinstance(next_index, int) and next_index <= start):
+            break  # normal end of pagination
+        if not isinstance(next_index, int):
+            # The endpoint changed shape (e.g. started returning "50" as a string,
+            # or switched to a per-page count). Breaking here would hand back a
+            # PARTIAL list, and name_collides would then report "no collision"
+            # from data it never finished reading -- the exact "we could not ask"
+            # vs "nothing is published" confusion this function promises to
+            # prevent. Fail closed instead.
+            raise ProfileLookupError(
+                f"Tableau Public returned an unexpected pagination cursor "
+                f"({next_index!r}); the endpoint may have changed. Refusing to report a "
+                f"partial workbook list, because it would look like 'no collision'."
+            )
         start = next_index
+    else:
+        # Loop exhausted without breaking: there are more pages than MAX_PAGES.
+        raise ProfileLookupError(
+            f"profile {profile!r} has more than {MAX_PAGES * PAGE_SIZE} workbooks; the "
+            f"listing was truncated, so a name collision cannot be ruled out."
+        )
     return found
 
 
@@ -431,7 +462,14 @@ def assert_safe_to_publish(
         )
 
     if not result.collides:
-        return True, result.reason
+        # State the blind spot rather than implying the check was exhaustive. The
+        # listing endpoint only returns NON_HIDDEN workbooks, and a hidden one
+        # still owns its name as far as Tableau's save flow is concerned.
+        return True, (
+            f"{result.reason} Note: workbooks you have HIDDEN from your profile are not "
+            f"visible to this check, so a hidden workbook of this name would still be "
+            f"replaced."
+        )
 
     if overwrite:
         return True, (

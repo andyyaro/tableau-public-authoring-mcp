@@ -7,7 +7,7 @@ render, not reasoned about. Tableau's own Marks card solves this with a Detail
 shelf; the compiler serialises it as ``<lod>`` inside ``<encodings>``.
 
 The element name is taken from the reference workbook
-(docs/fixtures/EV_WORKBOOK_ANALYSIS.md), whose heat-map sheets carry
+(docs/fixtures/REFERENCE_WORKBOOK_ANALYSIS.md), whose heat-map sheets carry
 ``<lod column='[federated.…].[none:Site ID:nk]' />`` beside their ``<color>``
 and ``<tooltip>`` children. Note the ``none:`` derivation: unlike a dimension on
 Tooltip, which must be promoted to ``attr:`` so it does NOT change the level of

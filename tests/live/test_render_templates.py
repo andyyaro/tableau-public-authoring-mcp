@@ -116,6 +116,22 @@ TEMPLATE_CASES: list[tuple[str, dict[str, Any], bool]] = [
         },
         True,
     ),
+    (
+        "map",
+        {
+            "name": "Map Sites",
+            "template": "map",
+            "data_source": "sites",
+            # latitude/longitude are deliberately NOT specified: inferring them
+            # from the column names is the documented default, so the live tier
+            # exercises the path callers will actually use.
+            "detail": ["Site Name"],
+            "color": "Status",
+            "size": {"field": "Annual Sessions", "aggregation": "Sum"},
+            "title": "Candidate sites",
+        },
+        True,
+    ),
 ]
 
 
@@ -155,18 +171,12 @@ def test_template_opens_and_renders(live_env, open_and_capture, slug, worksheet,
         )
 
 
-def test_all_supported_templates_are_covered():
-    """The case table must not drift away from what the spec model advertises.
-
-    A new template added to ``SUPPORTED_TEMPLATES`` without a live case here would
-    be shipped on the strength of unit tests alone, which is precisely how the
-    two blank-render defects reached a human.
-    """
-    from tableau_public_authoring.models.spec import SUPPORTED_TEMPLATES
-
-    covered = {slug for slug, _, _ in TEMPLATE_CASES}
-    assert covered == set(SUPPORTED_TEMPLATES), (
-        f"live render coverage does not match SUPPORTED_TEMPLATES: "
-        f"missing={sorted(set(SUPPORTED_TEMPLATES) - covered)}, "
-        f"stale={sorted(covered - set(SUPPORTED_TEMPLATES))}"
-    )
+# THE DRIFT CHECK OVER ``TEMPLATE_CASES`` IS NOT IN THIS FILE.
+#
+# ``test_every_supported_template_has_a_live_render_case`` lives in
+# tests/unit/test_coverage_gaps.py and imports the table above. It is pure logic
+# with no GUI dependency, and here it never ran: this module is marked ``live``,
+# so a default ``pytest`` deselected it and the one test whose entire job is to
+# notice a new template arriving without a live case only executed on the runs
+# that were already driving Tableau. Anything else that only reads the table
+# belongs there too — put a test here only if it opens a window.

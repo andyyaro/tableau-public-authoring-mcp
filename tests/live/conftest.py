@@ -7,10 +7,12 @@ makes it powerful (it is the only thing that catches "Tableau loaded the file an
 drew nothing") and dangerous (it moves windows, presses keys and can close
 documents). The safety rules encoded below are not stylistic:
 
-* **Opt-in only.** A bare ``pytest`` run *deselects* this whole package, because
-  ``pyproject.toml`` declares the ``live`` marker but sets no ``addopts`` filter.
-  Without the collection hook here, ``pytest`` would launch Tableau on a laptop
-  or, worse, in CI. Select the tier with ``-m live`` or ``TABLEAU_LIVE_TESTS=1``.
+* **Opt-in only, by two independent mechanisms.** ``pyproject.toml`` sets
+  ``addopts = "-m 'not live'"``, so a bare ``pytest`` deselects everything
+  carrying the ``live`` marker. The collection hook below is the second
+  mechanism and covers what the first cannot: a test placed in this package
+  *without* the marker. See "TWO MECHANISMS" in that hook. Select the tier with
+  ``-m live`` or ``TABLEAU_LIVE_TESTS=1``.
 * **Environment skips, never failures.** Not macOS, no Tableau, no Accessibility,
   no Screen Recording -> the tier skips. A Linux CI box must never go red here.
 * **Every workbook is named ``LiveTest_...``.** Teardown closes exactly those and
@@ -49,12 +51,27 @@ LIVE_PREFIX = "LiveTest"
 #: Opt-in environment variable, an alternative to ``-m live``.
 OPT_IN_ENV = "TABLEAU_LIVE_TESTS"
 
+#: The marker filter ``pyproject.toml`` puts in ``addopts``. Recognised by value
+#: so the environment-variable route can tell the project's own
+#: deselect-the-tier default apart from a filter the caller typed themselves.
+#: Keep this in step with ``[tool.pytest.ini_options] addopts``; a unit test
+#: pins the pyproject side (tests/unit/test_coverage_gaps.py).
+DEFAULT_MARKEXPR = "not live"
+
 #: Synthetic data. No real-world data ever goes near a publish flow.
-FIXTURE_CSV = Path(__file__).resolve().parents[1] / "fixtures" / "data" / "ev_site_readiness.csv"
+_FIXTURE_DATA = Path(__file__).resolve().parents[1] / "fixtures" / "data"
+FIXTURE_CSV = _FIXTURE_DATA / "ev_site_readiness.csv"
+
+#: A second, structurally unrelated table. Used only by the two-data-source
+#: case; it shares no column name with FIXTURE_CSV, so a workbook that renders
+#: it is unambiguously reading the second source and not the first.
+FIXTURE_CSV_2 = _FIXTURE_DATA / "ev_utilization.csv"
 
 #: Tableau degrades badly with many documents open (see the module docstring).
-#: Failing fast beats wedging the app halfway through a run.
-MAX_LIVE_WORKBOOKS = 12
+#: Failing fast beats wedging the app halfway through a run. The observed wedge
+#: point was roughly eighteen open documents; a full `-m live` run currently
+#: opens twelve, so this must stay above that and comfortably below eighteen.
+MAX_LIVE_WORKBOOKS = 14
 
 #: Seconds to wait for a window after `open -a`. Cold-starting Tableau, opening
 #: the .twbx and materialising the extract is slow on first run.
@@ -64,22 +81,50 @@ OPEN_TIMEOUT_S = 120.0
 #: appear within a couple of seconds once the window is up; this is headroom.
 RENDER_TIMEOUT_S = 30.0
 
-_deselected_live = 0
+_collection_notes: list[str] = []
 
 
 # --------------------------------------------------------------- opt-in gate
 
 
-def _explicitly_requested(config: pytest.Config) -> bool:
-    """True when the run named this tier, by marker or by environment variable.
-
-    ``-m "not live"`` also matches, which is harmless: pytest's own marker filter
-    then deselects exactly the same tests a moment later.
-    """
-    markexpr = str(getattr(config.option, "markexpr", "") or "")
-    if "live" in markexpr or "publish" in markexpr:
-        return True
+def env_opt_in() -> bool:
+    """True when ``TABLEAU_LIVE_TESTS`` names a truthy value."""
     return os.environ.get(OPT_IN_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def resolve_selection(markexpr: str, *, env_opt_in: bool) -> tuple[str, bool]:
+    """Decide the marker filter to run under, and who deselects the tier.
+
+    Returns ``(markexpr_to_use, deselect_here)``.
+
+    This is the whole opt-in decision, extracted as a pure function so it can be
+    tested without running pytest inside pytest. Its predecessor asked
+    ``if "live" in markexpr`` and treated the project's own default filter,
+    ``"not live"``, as "the caller asked for the live tier" — so the hook
+    returned early on every run and the second mechanism never deselected
+    anything at all.
+
+    The four cases:
+
+    * **Default run** (``-m "not live"`` from ``addopts``, no environment
+      variable): left alone. pytest's own marker filter deselects the tier.
+    * **Environment-variable opt-in with that same default filter**: the filter
+      is dropped, because it would otherwise deselect exactly the tests the
+      caller just asked for. This is what made
+      ``TABLEAU_LIVE_TESTS=1 pytest tests/live`` select *nothing*.
+    * **Any marker filter the caller typed themselves** (``-m live``,
+      ``-m "live and not publish"``, ``-m publish``): always wins, environment
+      variable or not. Guessing at someone's explicit ``-m`` is how a run that
+      asked for four publish tests silently becomes a run of fourteen.
+    * **No marker filter at all** (``addopts`` removed, or ``-m ""``): nothing
+      else will exclude the tier, so this conftest must do it itself.
+    """
+    expr = markexpr.strip()
+    if env_opt_in:
+        return ("", False) if expr in ("", DEFAULT_MARKEXPR) else (markexpr, False)
+    if expr == "":
+        return markexpr, True
+    return markexpr, False
 
 
 def _in_live_tier(item: pytest.Item) -> bool:
@@ -90,33 +135,65 @@ def _in_live_tier(item: pytest.Item) -> bool:
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Deselect the live tier unless it was asked for by name.
+    """Keep the GUI tier out of any run that did not ask for it.
 
-    ``pyproject.toml`` has no ``addopts``, so ``-m live`` is the only marker
-    filter in play and a plain ``pytest`` run would otherwise *execute* these
-    tests. Deselecting (rather than skipping) keeps a default run's output honest
-    and guarantees no GUI call is ever made.
+    TWO MECHANISMS, BOTH REAL
+    -------------------------
+    1. ``pyproject.toml`` sets ``addopts = "-m 'not live'"``. That deselects
+       every test carrying the ``live`` marker, wherever it lives, and it is the
+       one that does the work on a normal day.
+    2. This hook. It covers the case the marker filter structurally cannot: a
+       test added to ``tests/live/`` that nobody marked. Such a test would run
+       in a bare ``pytest`` and launch Tableau. It is marked here, before
+       pytest's own filter runs, so mechanism 1 then treats it like every other
+       live test. If mechanism 1 is missing altogether — no marker filter in
+       play at all — this hook deselects the tier outright instead.
+
+    Hook order is what makes both of those work: conftest plugins are registered
+    after pytest's builtins and their ``pytest_collection_modifyitems`` therefore
+    runs *first*, so a marker added (or a ``markexpr`` adjusted) here is in place
+    by the time ``_pytest.mark`` does its deselecting.
     """
-    global _deselected_live
-    if _explicitly_requested(config):
-        return
-    keep: list[pytest.Item] = []
-    dropped: list[pytest.Item] = []
-    for item in items:
-        (dropped if _in_live_tier(item) else keep).append(item)
-    if dropped:
-        _deselected_live = len(dropped)
-        config.hook.pytest_deselected(items=dropped)
-        items[:] = keep
+    _collection_notes.clear()
+    opt_in = env_opt_in()
+    before = str(getattr(config.option, "markexpr", "") or "")
+    markexpr, deselect_here = resolve_selection(before, env_opt_in=opt_in)
+    config.option.markexpr = markexpr
+    if markexpr != before:
+        _collection_notes.append(
+            f"live tier: {OPT_IN_ENV} is set, so the default -m {before!r} filter was dropped "
+            f"for this run"
+        )
+
+    live_items = [item for item in items if _in_live_tier(item)]
+    unmarked = [i for i in live_items if i.get_closest_marker("live") is None]
+    for item in unmarked:
+        # Not a licence to skip the marker — tests/unit/test_coverage_gaps.py
+        # fails when a module in this package forgets it. This is the net that
+        # stops the mistake reaching the GUI in the meantime.
+        item.add_marker(pytest.mark.live)
+    if unmarked:
+        _collection_notes.append(
+            f"live tier: {len(unmarked)} test(s) in tests/live/ carry no 'live' marker and were "
+            f"marked during collection: {', '.join(i.nodeid for i in unmarked)}"
+        )
+
+    if deselect_here and live_items:
+        config.hook.pytest_deselected(items=live_items)
+        items[:] = [item for item in items if not _in_live_tier(item)]
+        _collection_notes.append(
+            f"live tier: {len(live_items)} test(s) deselected by tests/live/conftest.py because "
+            f"no marker filter was in force (has addopts been removed from pyproject.toml?)"
+        )
+    elif not opt_in and markexpr.strip() == DEFAULT_MARKEXPR and live_items:
+        _collection_notes.append(
+            f"live tier: {len(live_items)} test(s) not selected "
+            f"(run with -m live, or {OPT_IN_ENV}=1, to drive the real Tableau Public app)"
+        )
 
 
 def pytest_report_collectionfinish(config: pytest.Config, items: list[pytest.Item]) -> list[str]:
-    if _explicitly_requested(config) or not _deselected_live:
-        return []
-    return [
-        f"live tier: {_deselected_live} test(s) not selected "
-        f"(run with -m live, or {OPT_IN_ENV}=1, to drive the real Tableau Public app)"
-    ]
+    return list(_collection_notes)
 
 
 # ------------------------------------------------------------- environment
@@ -272,15 +349,24 @@ def make_live_spec(
     *,
     dashboards: Sequence[dict[str, Any]] | None = None,
     calculated_fields: Sequence[dict[str, Any]] | None = None,
+    data_sources: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a spec dict wired to the fixture CSV and this run's temp output."""
+    """Build a spec dict wired to the fixture CSV and this run's temp output.
+
+    ``data_sources`` overrides the single ``sites`` source, for the one case that
+    needs two of them (``test_encodings_and_sources.py``). Everything else takes
+    the default: one source keeps a render failure attributable to the thing the
+    test is actually about.
+    """
     spec: dict[str, Any] = {
         "spec_version": "0.1",
         "workbook": {
             "name": env.workbook_name(slug),
             "description": "Automated live-tier render check. Synthetic data. Never published.",
         },
-        "data_sources": [{"id": "sites", "type": "csv", "path": str(env.csv)}],
+        "data_sources": list(data_sources)
+        if data_sources
+        else [{"id": "sites", "type": "csv", "path": str(env.csv)}],
         "worksheets": list(worksheets),
         "output": {"directory": str(env.output_dir), "package_twbx": True},
     }

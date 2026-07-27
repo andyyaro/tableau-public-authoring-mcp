@@ -194,8 +194,11 @@ class FakeDesktop:
     sent *nothing* — which is the whole point of dry-run mode.
     """
 
-    def __init__(self, windows, *, on_key=None, on_click=None, on_open=None):
+    def __init__(self, windows, *, on_key=None, on_click=None, on_open=None, app_active=True):
         self.windows = [dict(w) for w in windows]
+        # Whether Tableau owns keyboard focus. Command-W goes to the ACTIVE APP,
+        # so a fake that always says "yes" would hide the very bug this models.
+        self.app_active = app_active
         self.clicks: list[tuple[int, int]] = []
         self.keys: list[str] = []
         self.opened: list[Path] = []
@@ -221,6 +224,10 @@ class FakeDesktop:
 
     def activate(self) -> None:
         self.activations += 1
+        self.app_active = True
+
+    def is_active(self) -> bool:
+        return self.app_active
 
     def open_file(self, path: Path) -> None:
         self.opened.append(Path(path))
@@ -298,17 +305,67 @@ def test_dock_tile_is_classified_minimized():
     assert w.on_screen
 
 
-def test_offscreen_window_is_classified_minimized():
-    """Absent from the on-screen list and parked at a negative x."""
-    w = classify(FakeDesktop([STALE_PROBE_A]))[0]
-    assert w.is_minimized
+def test_an_offscreen_window_is_a_husk_not_a_minimized_document():
+    """218x161 at (-234, 367), absent on-screen, is a DESTROYED window.
+
+    It was read as "minimized while hidden" for a long time and that reading cost
+    two bugs at once (STALE WINDOWS at the top of window_control): a husk
+    outranks a live Dock tile on area, so closing aimed at the husk and called a
+    live workbook unreachable; and a husk never disappears, so the post-close
+    check saw the title survive and reported every successful close as a failure.
+
+    The corrected model is decidable because both halves are pinned here. A live
+    window is always composited — full size, or as a Dock tile — so off-screen
+    means gone; and minimizing does NOT take a window off-screen, so nothing
+    legitimate is lost by discarding what is. ``is_minimized`` still answers True
+    for an off-screen window, which is backwards compatibility for that flag and
+    not a claim about the world: ``is_stale`` carries the model, and it is what
+    every caller filters on.
+    """
+    husk = FakeDesktop([STALE_PROBE_A])
+    w = classify(husk)[0]
+    assert w.is_document
     assert not w.on_screen
+    assert w.is_stale, "an off-screen window is the husk of a closed document"
+
+    # Invisible to every caller that decides what to click, raise or close.
+    assert wc.document_windows(enumerator=husk.enumerate) == []
+    assert wc.find_document("ProbeA_FilterOnly", enumerator=husk.enumerate) is None
+    assert wc.frontmost_document(enumerator=husk.enumerate) is None
+    # Reachable only by asking for husks by name, which exists for diagnostics.
+    diagnosed = wc.document_windows(enumerator=husk.enumerate, include_stale=True)
+    assert [d.id for d in diagnosed] == [STALE_PROBE_A["id"]]
+
+    # The same workbook, genuinely open and minimized: an on-screen Dock tile,
+    # not stale, and still findable.
+    tile = FakeDesktop([DOCK_TILE_PROBE_A])
+    m = classify(tile)[0]
+    assert m.on_screen and not m.is_stale and m.is_minimized
+    assert [d.id for d in wc.document_windows(enumerator=tile.enumerate)] == [
+        DOCK_TILE_PROBE_A["id"]
+    ]
+    found = wc.find_document("ProbeA_FilterOnly", enumerator=tile.enumerate)
+    assert found is not None and found.id == DOCK_TILE_PROBE_A["id"]
 
 
-def test_absence_from_onscreen_list_alone_marks_minimized():
-    """Full-size bounds but missing on-screen: still reported minimized."""
+def test_absence_from_the_onscreen_list_alone_marks_a_husk():
+    """Full-size bounds, missing on-screen: still destroyed, not merely hidden.
+
+    Absence from the on-screen list is the entire signal. The window server reaps
+    husks lazily and does not promise to shrink them first, so a husk carrying
+    the last live bounds has to be discarded on the same evidence as the 218x161
+    one. Note what ``is_minimized`` says here: True, for a 1291x949 window that is
+    neither minimized nor open. That is exactly why the decision is made on
+    ``is_stale`` and why no caller reads the older flag on its own.
+    """
     hidden = dict(RESTORED, on_screen=False, id=424242)
-    assert classify(FakeDesktop([hidden]))[0].is_minimized
+    fake = FakeDesktop([hidden])
+    w = classify(fake)[0]
+
+    assert w.is_stale
+    assert wc.document_windows(enumerator=fake.enumerate) == []
+    assert wc.frontmost_document(enumerator=fake.enumerate) is None
+    assert wc.find_document(RESTORED["title"], enumerator=fake.enumerate) is None
 
 
 def test_dialogs_are_not_documents():
@@ -438,12 +495,21 @@ def test_unminimize_and_raise_reports_missing_window_without_acting():
     assert fake.activations == 0
 
 
-def test_unminimize_and_raise_prefers_the_open_path_when_a_file_is_known(tmp_path):
+def test_the_dock_tile_click_is_preferred_even_when_a_file_path_is_known(tmp_path):
+    """`open -a` raises more reliably but does NOT activate the document.
+
+    Reproduced live: with one workbook minimized behind another, closing it via
+    `open -a` failed twice over 21s while consuming two blank Book windows --
+    Command-W was closing those, because the window server reported the target as
+    frontmost while Tableau's own active-document state pointed elsewhere. The
+    same close via the Dock-tile click succeeded first time. Clicking the tile
+    activates the document; re-opening the file only rearranges windows.
+    """
     path = tmp_path / "Probe_Alpha.twbx"
     path.write_bytes(b"not really a workbook")
     fake = FakeDesktop(
         [doc("Probe_Alpha", wid=7, minimized=True)],
-        on_open=lambda f: f.restore_and_front("Probe_Alpha"),
+        on_click=lambda f: f.restore_and_front("Probe_Alpha"),
     )
     ok, message = wc.unminimize_and_raise(
         "Probe_Alpha",
@@ -455,9 +521,30 @@ def test_unminimize_and_raise_prefers_the_open_path_when_a_file_is_known(tmp_pat
         sleeper=fake.sleep,
     )
     assert ok is True
+    assert fake.clicks == [(86, 222)]  # centre of the live tile
+    assert fake.opened == [], "open -a must not be used while a tile is clickable"
+    assert fake.activations == 1
+    assert "HID click" in message
+
+
+def test_open_a_is_used_only_when_there_is_nothing_to_click(tmp_path):
+    """The fallback still exists for a window with no usable on-screen bounds."""
+    path = tmp_path / "Probe_Alpha.twbx"
+    path.write_bytes(b"not really a workbook")
+    tiny = dict(doc("Probe_Alpha", wid=7, minimized=True), width=4.0, height=4.0)
+    fake = FakeDesktop([tiny], on_open=lambda f: f.restore_and_front("Probe_Alpha"))
+    ok, message = wc.unminimize_and_raise(
+        "Probe_Alpha",
+        file_path=path,
+        enumerator=fake.enumerate,
+        clicker=fake.click,
+        activator=fake.activate,
+        opener=fake.open_file,
+        sleeper=fake.sleep,
+    )
+    assert ok is True
     assert fake.opened == [path]
-    assert fake.activations == 1  # activate must precede open -a
-    assert fake.clicks == []  # no blind clicking when the file path is known
+    assert fake.clicks == []
     assert "open -a" in message
 
 
@@ -541,6 +628,7 @@ def test_close_document_refuses_an_unknown_workbook():
         "Ghost_Workbook",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -556,6 +644,7 @@ def test_close_document_refuses_a_substring_only_match():
         "Full_Feature_Check",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -572,6 +661,7 @@ def test_close_document_rejects_save_true_instead_of_silently_ignoring_it():
         save=True,
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -586,6 +676,7 @@ def test_close_document_refuses_when_a_save_prompt_is_already_showing():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -605,6 +696,7 @@ def test_close_document_bails_out_when_a_save_prompt_appears():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -628,6 +720,7 @@ def test_close_document_bails_out_on_an_unrecognised_new_dialog():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -642,6 +735,7 @@ def test_close_document_reports_failure_when_the_window_survives():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -659,6 +753,7 @@ def test_close_document_succeeds_only_when_the_window_is_gone():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -675,6 +770,7 @@ def test_close_document_refuses_when_the_target_cannot_be_raised():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=lambda stem: (False, "stub refuses to raise"),
         sleeper=fake.sleep,
     )
@@ -690,6 +786,7 @@ def test_close_document_aborts_if_the_raise_left_another_window_in_front():
         "Probe_Alpha",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=lambda stem: (True, "stub claims success but changed nothing"),
         sleeper=fake.sleep,
     )
@@ -721,7 +818,7 @@ def _debris_desktop(**kwargs) -> FakeDesktop:
 
 
 def test_close_all_generated_never_matches_outside_its_prefixes():
-    """SAFETY CRITICAL: the user's Quarterly_Sales_Review is open.
+    """SAFETY CRITICAL: the user's own workbook Quarterly_Sales_Review is open.
 
     It must not be selected by any of the test-debris prefixes, nor must the
     ``_QA_ready`` variant, nor the unrelated validation workbook.
@@ -732,6 +829,7 @@ def test_close_all_generated_never_matches_outside_its_prefixes():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
     )
     assert sorted(report["would_close"]) == [
         "Full_Feature_Check",
@@ -763,6 +861,7 @@ def test_close_all_generated_dry_run_sends_no_events():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         activator=fake.activate,
         opener=fake.open_file,
     )
@@ -801,6 +900,7 @@ def test_close_all_generated_closes_only_matches_when_armed():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
@@ -820,20 +920,50 @@ def test_close_all_generated_closes_only_matches_when_armed():
 
 
 def test_close_all_generated_closes_each_workbook_once_when_it_has_two_windows():
+    """One workbook, two windows: closed ONCE, and actually closed.
+
+    The assertion here used to be ``len(closed) + len(failed) == 1``, which the
+    test's name promised more than: a run in which the close was refused or
+    bailed out satisfied it identically, so only de-duplication was ever tested.
+    Both halves are checked now — the stem appears exactly once and in
+    ``closed``, nothing lands in ``failed``, exactly one Command-W is sent, and
+    no window with that title survives.
+
+    The fake also has to model Command-W properly for that to be answerable.
+    Closing a document destroys *every* window it owns, so the shared
+    ``remove_frontmost_document`` (which drops exactly one) leaves the second
+    window standing, ``close_document`` correctly refuses to claim a success it
+    cannot prove, and the old assertion counted that refusal as a pass.
+    """
+
+    def close_the_whole_document(f: FakeDesktop) -> None:
+        front = next(
+            (w for w in f.windows if w["title"].startswith(wc.DOC_TITLE_PREFIX) and w["on_screen"]),
+            None,
+        )
+        if front is not None:
+            f.windows = [w for w in f.windows if w["title"] != front["title"]]
+
     fake = FakeDesktop(
         [doc("Probe_Alpha", wid=1, minimized=True), doc("Probe_Alpha", wid=2)],
-        on_key=lambda f: f.remove_frontmost_document(),
+        on_key=close_the_whole_document,
     )
     report = wc.close_all_generated(
         ["Probe"],
         dry_run=False,
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         raiser=fake.raiser,
         sleeper=fake.sleep,
     )
+    # Both windows are candidates...
     assert len(report["would_close"]) == 2
-    assert len(report["closed"]) + len(report["failed"]) == 1
+    # ...and the workbook behind them is closed exactly once, successfully.
+    assert [c["stem"] for c in report["closed"]] == ["Probe_Alpha"]
+    assert report["failed"] == [], report["failed"]
+    assert fake.keys == ["w"], "one workbook must cost exactly one Command-W"
+    assert fake.titles() == [], f"a window with that title survived: {fake.titles()}"
 
 
 # --- close_all_generated: known_paths and husks -----------------------------
@@ -861,6 +991,7 @@ def test_close_all_generated_ignores_husks_of_workbooks_it_already_closed():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         opener=fake.open_file,
         sleeper=fake.sleep,
     )
@@ -891,6 +1022,7 @@ def test_a_husk_never_outranks_the_live_window_of_the_same_workbook():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         activator=fake.activate,
         opener=fake.open_file,
         sleeper=fake.sleep,
@@ -899,12 +1031,13 @@ def test_a_husk_never_outranks_the_live_window_of_the_same_workbook():
     assert [w["id"] for w in report["matched"]] == [2]  # the live tile, not the husk
 
 
-def test_close_all_generated_closes_a_minimized_workbook_using_its_known_path(tmp_path):
+def test_close_all_generated_closes_a_minimized_workbook(tmp_path):
+    """known_paths is supplied, but a minimized workbook has a tile, so the tile wins."""
     path = tmp_path / "LiveTest_022850_bar.twbx"
     path.write_bytes(b"not really a workbook")
     fake = FakeDesktop(
         [doc("LiveTest_022850_bar", wid=1, minimized=True)],
-        on_open=lambda f: f.restore_and_front("LiveTest_022850_bar"),
+        on_click=lambda f: f.restore_and_front("LiveTest_022850_bar"),
         on_key=lambda f: f.remove_frontmost_document(),
     )
     report = wc.close_all_generated(
@@ -914,14 +1047,15 @@ def test_close_all_generated_closes_a_minimized_workbook_using_its_known_path(tm
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         activator=fake.activate,
         opener=fake.open_file,
         sleeper=fake.sleep,
     )
     assert [e["stem"] for e in report["closed"]] == ["LiveTest_022850_bar"]
     assert report["failed"] == []
-    assert fake.opened == [path]  # restored via `open -a`, not by clicking a tile
-    assert fake.clicks == []
+    assert fake.clicks == [(86, 222)]  # the tile activates the document
+    assert fake.opened == []
     assert fake.keys == ["w"]
     assert fake.titles() == []
 
@@ -939,6 +1073,7 @@ def test_without_a_known_path_a_minimized_workbook_is_closed_via_its_dock_tile()
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         activator=fake.activate,
         opener=fake.open_file,
         sleeper=fake.sleep,
@@ -969,8 +1104,10 @@ def test_known_paths_never_widen_what_close_all_generated_is_allowed_to_touch():
 
 def test_known_paths_are_matched_on_the_normalised_stem():
     """Tableau's window title need not match the file name byte for byte."""
+    # No clickable tile, so the open -a fallback runs and the path lookup matters.
+    unclickable = dict(doc("LiveTest 022850 bar", wid=1, minimized=True), width=4.0, height=4.0)
     fake = FakeDesktop(
-        [doc("LiveTest 022850 bar", wid=1, minimized=True)],
+        [unclickable],
         on_open=lambda f: f.restore_and_front("LiveTest 022850 bar"),
         on_key=lambda f: f.remove_frontmost_document(),
     )
@@ -981,6 +1118,7 @@ def test_known_paths_are_matched_on_the_normalised_stem():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         activator=fake.activate,
         opener=fake.open_file,
         sleeper=fake.sleep,
@@ -997,6 +1135,7 @@ def test_close_document_says_a_husk_only_workbook_is_already_closed():
         "LiveTest_022054_bar",
         enumerator=fake.enumerate,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         clicker=fake.click,
         opener=fake.open_file,
         sleeper=fake.sleep,
@@ -1014,8 +1153,205 @@ def test_dry_run_with_known_paths_still_sends_nothing():
         enumerator=fake.enumerate,
         clicker=fake.click,
         key_sender=fake.send_key,
+        app_checker=fake.is_active,
         opener=fake.open_file,
     )
     assert report["dry_run"] is True
     assert report["would_close"] == ["LiveTest_022850_bar"]
     assert fake.keys == [] and fake.clicks == [] and fake.opened == []
+
+
+# --- keyboard focus belongs to an APP, not a window -------------------------
+#
+# Every guard above this point ranks only Tableau's OWN windows, so all of them
+# pass happily while the user is typing in a browser. Command-W is posted with
+# CGEventPost(kCGHIDEventTap, ...), which delivers to whatever application owns
+# keyboard focus. The result was a close that shut the user's front Chrome tab
+# and then reported "Command-W was sent but the workbook is still open".
+
+
+def test_close_refuses_when_tableau_is_not_the_active_application():
+    fake = FakeDesktop(
+        [doc("Probe_Alpha", wid=7)],
+        app_active=False,
+        on_key=lambda f: f.remove_frontmost_document(),
+    )
+    ok, message = wc.close_document(
+        "Probe_Alpha",
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+        app_checker=lambda: False,  # activation never takes effect
+        activator=lambda: None,
+        app_namer=lambda: "Google Chrome",
+    )
+    assert ok is False
+    assert "active application" in message
+    assert "Google Chrome" in message, "the message must name where focus actually is"
+    assert fake.keys == [], "a keystroke escaped to whatever app the user was in"
+
+
+def test_close_activates_tableau_first_rather_than_giving_up():
+    """Refusing outright would break every run driven from a terminal."""
+    fake = FakeDesktop(
+        [doc("Probe_Alpha", wid=7)],
+        app_active=False,
+        on_key=lambda f: f.remove_frontmost_document(),
+    )
+    ok, _ = wc.close_document(
+        "Probe_Alpha",
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        activator=fake.activate,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+        app_checker=fake.is_active,
+    )
+    assert ok is True
+    assert fake.activations == 1
+    assert fake.keys == ["w"]
+
+
+def test_tableau_is_active_recognises_the_process_name():
+    assert wc.tableau_is_active(runner=lambda _s: "Tableau Public") is True
+    assert wc.tableau_is_active(runner=lambda _s: "Google Chrome") is False
+
+
+def test_frontmost_app_name_returns_none_when_it_cannot_be_determined():
+    def boom(_script):
+        raise wc.DesktopError("System Events is not responding")
+
+    assert wc.frontmost_app_name(runner=boom) is None
+    assert wc.tableau_is_active(runner=boom) is False
+
+
+# --- a stale save prompt must not block every future close ------------------
+
+
+def test_a_husk_of_a_save_prompt_is_not_treated_as_an_open_dialog():
+    """Dialogs leave husks exactly as documents do.
+
+    The sign-in window's ~59x112 husk once made publishing believe sign-in was
+    permanently required. A stale save prompt is worse: it would abort EVERY
+    close from then on with "Tableau is already showing a save prompt".
+    """
+    stale_prompt = dict(SAVE_PROMPT, on_screen=False)
+    assert wc.detect_save_prompt(enumerator=lambda: [stale_prompt]) is None
+    # ...while a live one is still caught.
+    assert wc.detect_save_prompt(enumerator=lambda: [dict(SAVE_PROMPT)]) is not None
+
+
+def test_a_husk_of_a_save_prompt_does_not_block_a_close():
+    fake = FakeDesktop(
+        [doc("Probe_Alpha", wid=7), dict(SAVE_PROMPT, on_screen=False)],
+        on_key=lambda f: f.remove_frontmost_document(),
+    )
+    ok, message = wc.close_document(
+        "Probe_Alpha",
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+        app_checker=fake.is_active,
+    )
+    assert ok is True, message
+
+
+def test_a_husk_only_stem_is_reported_as_already_closed_not_as_a_failure():
+    """Teardown must judge by outcome, not by close_document's return value.
+
+    close_document REFUSES a stem that resolves only to a husk ("already closed,
+    nothing to do") -- which is the goal state. Reporting that under COULD NOT
+    CLOSE sends someone hunting for a window that does not exist, which is
+    exactly the false alarm the husk work was meant to end.
+    """
+    fake = FakeDesktop([doc("LiveTest_1_gone", wid=1, stale=True)])
+    report = wc.close_all_generated(
+        ["LiveTest"],
+        dry_run=False,
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        app_checker=fake.is_active,
+        sleeper=fake.sleep,
+    )
+    assert report["failed"] == []
+    assert "LiveTest_1_gone" in report["already_closed"]
+
+
+def test_a_genuinely_stuck_window_is_still_reported_as_failed():
+    """The outcome rule must not swallow a real failure."""
+    fake = FakeDesktop([doc("LiveTest_1_stuck", wid=1)])  # on-screen, never closes
+    report = wc.close_all_generated(
+        ["LiveTest"],
+        dry_run=False,
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        app_checker=fake.is_active,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+    )
+    assert [e["stem"] for e in report["failed"]] == ["LiveTest_1_stuck"]
+    assert report["closed"] == []
+
+
+def test_a_dropped_keystroke_is_resent_once():
+    """Tableau drops the occasional Command-W when it is busy.
+
+    With a dozen documents loaded, one workbook per live run survived the first
+    keystroke while its window sat restored and frontmost, with no save prompt
+    and no dialog. One resend is bounded and safe: every guard is re-evaluated.
+    """
+    state = {"keys": 0}
+
+    def flaky(_key):
+        state["keys"] += 1
+        if state["keys"] >= 2:  # the second one lands
+            fake.remove_frontmost_document()
+
+    fake = FakeDesktop([doc("Probe_Alpha", wid=7)], on_key=flaky)
+    ok, message = wc.close_document(
+        "Probe_Alpha",
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+        app_checker=fake.is_active,
+    )
+    assert ok is True, message
+    assert state["keys"] == 2
+
+
+def test_the_resend_is_bounded_to_one_extra_attempt():
+    """A window that never closes must not loop forever."""
+    fake = FakeDesktop([doc("Probe_Alpha", wid=7)])  # on_key does nothing
+    ok, message = wc.close_document(
+        "Probe_Alpha",
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+        app_checker=fake.is_active,
+    )
+    assert ok is False
+    assert fake.keys == ["w", "w"], "expected exactly two attempts"
+    assert "twice" in message
+
+
+def test_a_save_prompt_still_stops_the_resend():
+    """The retry must not bulldoze past the one thing this module never answers."""
+    fake = FakeDesktop(
+        [doc("Probe_Alpha", wid=7)],
+        on_key=lambda f: f.add(dict(SAVE_PROMPT)),
+    )
+    ok, message = wc.close_document(
+        "Probe_Alpha",
+        enumerator=fake.enumerate,
+        key_sender=fake.send_key,
+        raiser=fake.raiser,
+        sleeper=fake.sleep,
+        app_checker=fake.is_active,
+    )
+    assert ok is False
+    assert "BAILED OUT" in message
+    assert fake.keys == ["w"], "a save prompt must stop it dead, not trigger a resend"

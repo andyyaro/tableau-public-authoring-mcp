@@ -25,25 +25,47 @@
 
 | Tool | Purpose |
 |---|---|
-| `publish_to_tableau_public` | visible `File > Save to Tableau Public As...` flow |
+| `publish_to_tableau_public` | visible `Save to Tableau Public As...` flow, invoked with Command+Shift+S (File menu as fallback) |
 
-Required: `workbook_window`, `public_name`, `confirm_publish: true`.
-Optional: `profile`, `overwrite` (default `false`), `set_title` (default `true`),
-`is_validation_test`, `dry_run`, `screenshot_dir`.
+Required: `workbook_window`, `public_name`, `confirm_publish: true`, `profile`.
+Optional: `overwrite` (default `false`), `set_title` (default `true`),
+`workbook_path`, `dry_run`, `screenshot_dir`.
 
-Runs the flow to completion: invoke the menu, hand off if a sign-in window appears,
-type the workbook title, click Save, wait for the upload to be submitted, resolve
-the public URL from your profile, and verify it responds.
+**Pass `workbook_path`** (the absolute `.twbx` being published) when you have it.
+It lets a minimised workbook be raised with `open -a`, which `window_control`
+documents as the reliable route; without it only the coordinate-click fallback is
+available.
 
-**Pass `profile`** (your Tableau Public profile name) to get two things:
+Runs the flow to completion: send Command+Shift+S (falling back to the File menu),
+hand off if a sign-in window appears, type the workbook title, click Save, wait for
+the upload to be submitted, resolve the public URL from your profile, and verify it
+responds.
+
+**`profile`** (your Tableau Public profile name) is required, not optional,
+because two things depend on it:
 1. **Overwrite protection** — the tool queries your published workbooks first and
    refuses to clobber an existing one unless `overwrite: true`. It fails *closed*:
-   if the lookup fails it refuses rather than assuming the name is free.
-2. **URL resolution and verification** — without it, publication is submitted but
-   the tool cannot confirm or return the resulting URL.
+   if the lookup fails it refuses rather than assuming the name is free. This was
+   once gated on `if profile:` while `profile` was optional, so omitting one
+   argument skipped the only guard against replacing a live workbook.
+2. **URL resolution and verification** — the profile is polled until the new
+   workbook appears, and its URL is then loaded to confirm it responds.
 
 Refuses to act unless the intended workbook is the frontmost document. Never reads,
 types or stores credentials; stops and hands off if a sign-in window appears.
+
+### `is_validation_test` is not a publish option
+
+It is **not in the tool schema**, and the schema sets `additionalProperties:
+false`, so a conforming client cannot send it. It never was wired to anything:
+`publisher.publish()` has no such parameter and never received one, so on a real
+publish it labelled nothing, changed no behaviour, and appeared nowhere in the
+published workbook.
+
+One vestige remains — the `dry_run` payload still emits
+`"is_validation_test": true` inside `would_publish`. That key reflects nothing and
+will read `true` whatever you do. `docs/architecture/THREAT_MODEL.md` describes a
+warning keyed off this flag (T9); **that warning does not exist in the code.**
 
 ## Capability reporting is derived, not hand-written
 

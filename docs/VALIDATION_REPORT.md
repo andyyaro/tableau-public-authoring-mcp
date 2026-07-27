@@ -1,12 +1,26 @@
 # Validation Report
 
-**Date:** 2026-07-27 · **Tableau Public:** 2026.2.0 · **macOS:** 26.5.1 arm64
+**Frozen record of the v0.1.0 validation run.** Dated 2026-07-27 · Tableau
+Public 2026.2.0 · macOS 26.5.1 arm64.
+
+> **This document is not maintained and is superseded by
+> `docs/architecture/CAPABILITY_BOUNDARY.md`.** It records what one validation run
+> measured on one day. Read it for *how* the defects below were found — the load
+> failures and their fixes are the durable part. Do **not** read it as the current
+> capability list, and do not read any count in it as the current count; both have
+> moved on. Capability status lives in `CAPABILITY_BOUNDARY.md`, limitations in
+> `docs/LIMITATIONS.md`, and gate numbers come from re-running the commands.
 
 ## Layer 1 — specification validation
 
-18 unit tests. Rejects unknown keys, invalid templates, missing CSVs, duplicate
-worksheet names, unresolvable field references, duplicate data-source ids, bad
-aggregations, dashboards, and template shelf violations. **PASS**
+Rejects unknown keys, invalid templates, missing CSVs, duplicate worksheet names,
+unresolvable field references, duplicate data-source ids, bad aggregations, and
+template shelf violations. **PASS**
+
+At the time of this run a `dashboards` key was rejected outright. **That is no
+longer true**: dashboards are parsed, compiled and verified rendering in Tableau
+Public 2026.2.0. `tests/unit/test_spec_validation.py:92` documents the removal of
+that rejection, and `tests/unit/test_dashboards.py` holds the dashboard contract.
 
 ## Layer 2 — generated-file validation
 
@@ -63,20 +77,28 @@ filter card shows `Status (All)`. **PASS**
 
 ## Quality gates
 
-| Gate | Result |
+Every gate below passed on 2026-07-27 at v0.1.0. The counts are deliberately not
+reproduced: the suite has grown substantially since, and a number copied out of a
+frozen report is a number that will be wrong. Re-run the commands in
+`README.md` instead.
+
+| Gate | Result at v0.1.0 |
 |---|---|
-| `ruff format --check` | PASS (27 files) |
+| `ruff format --check` | PASS |
 | `ruff check` | PASS (0 errors) |
-| `pytest tests/unit` | **39 passed** |
+| `pytest tests/unit` | PASS |
 | MCP `initialize` | PASS |
-| MCP `tools/list` | PASS (10 tools) |
+| MCP `tools/list` | PASS |
 | MCP tool execution | PASS |
 | Server survives tool error | PASS |
-| Existing MCPs preserved | PASS (6 connected) |
+| Existing MCPs preserved | PASS |
 
-## Known gaps
+## Gaps at the time of this run — all since closed
 
-`line`, `heatmap`, `scatter`, `circle` compile and pass layers 1-2 but were not
-individually screenshot-verified; only `bar` and `text_table` were. Recorded in
-`docs/architecture/CAPABILITY_BOUNDARY.md` as partially supported rather than
-claimed as working.
+`line`, `heatmap`, `scatter` and `circle` compiled and passed layers 1-2 on this
+date but had not been individually screenshot-verified; only `bar` and
+`text_table` had. **That gap is closed.** Every template in `SUPPORTED_TEMPLATES`
+— now seven, including `map` — is opened in the real app and checked for marks by
+`tests/live/test_render_templates.py`, and
+`test_all_supported_templates_are_covered` fails if a template is ever added
+without a live case. Current status: `docs/architecture/CAPABILITY_BOUNDARY.md`.

@@ -23,7 +23,7 @@ These were measured directly on this Mac on 2026-07-26, not read from documentat
 | Python | 3.14.6 | `python3 --version` |
 | uv | 0.11.29 | `uv --version` |
 | Node | v25.8.2 | `node --version` |
-| `gh` auth | logged in as `andyyaro`, scopes incl. `repo` | `gh auth status` |
+| `gh` auth | logged in as `<your-github-user>`, scopes incl. `repo` | `gh auth status` |
 | Bundled Hyper engine | `Contents/MacOS/hyper/hyperd` (267 MB) | `ls -la` |
 
 ### 1.1 AppleScript support — NONE (decisive finding)
@@ -62,7 +62,7 @@ respected).
 
 With the app running (pid 76583), the AX tree is readable:
 
-- Window: `Tableau Public - Quarterly_Sales_Review` (role `AXWindow`)
+- Window: `Tableau Public - the reference workbook` (role `AXWindow`)
 - Menu bar items: `Tableau Public, File, Data, Worksheet, Dashboard, Story,
   Analysis, Map, Format, Server, Window, Help`
 
@@ -198,7 +198,7 @@ independent processes, so a language split costs nothing operationally.
 
 Verified against the user's own workbook, which the reader MCP downloaded and
 unpacked during this session (full forensics in
-`docs/fixtures/EV_WORKBOOK_ANALYSIS.md`).
+`docs/fixtures/REFERENCE_WORKBOOK_ANALYSIS.md`).
 
 Independently confirmed facts (the masterprompt's §2 leads were treated as
 unverified and re-checked):

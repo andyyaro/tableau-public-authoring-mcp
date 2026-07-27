@@ -54,7 +54,7 @@ Practical guidance: keep one workbook open when publishing.
 No API exists. Publishing requires a visible app, a signed-in session, and
 Accessibility + Screen Recording permissions. It cannot run headless or in CI.
 
-## 6. All six worksheet patterns are now screenshot-verified
+## 6. All seven worksheet patterns are now screenshot-verified
 
 `bar`, `text_table`, `line`, `heatmap`, `scatter` and `circle` were each opened in
 Tableau Public 2026.2.0 and confirmed to render marks.

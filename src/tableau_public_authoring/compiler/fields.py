@@ -27,11 +27,52 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?")
 _BOOL_VALUES = {"true", "false", "yes", "no"}
 
-# Geographic role hints, matched case-insensitively against the column name.
+# Geographic roles, matched case-insensitively against the whole column name.
+#
+# These values are not guesses. They are copied from a published workbook that
+# renders a real map (docs/fixtures/REFERENCE_WORKBOOK_ANALYSIS.md):
+#   <column aggregation="Avg" datatype="real" name="[Latitude]" role="measure"
+#           semantic-role="[Geographical].[Latitude]" type="quantitative" />
+# An earlier version of this table mapped BOTH latitude and longitude to
+# "[Country].[Name]", which is the role for a country *name* column. It was never
+# called by anything, so the error was invisible until maps were implemented.
+#
+# Whole-name matching only. A substring rule would claim "Longest Wait" as a
+# longitude and silently produce a map of the Gulf of Guinea.
+GEO_LATITUDE = "[Geographical].[Latitude]"
+GEO_LONGITUDE = "[Geographical].[Longitude]"
+
 _GEO_ROLES = {
-    "latitude": "[Country].[Name]",
-    "longitude": "[Country].[Name]",
+    "latitude": GEO_LATITUDE,
+    "lat": GEO_LATITUDE,
+    "longitude": GEO_LONGITUDE,
+    "long": GEO_LONGITUDE,
+    "lon": GEO_LONGITUDE,
+    "lng": GEO_LONGITUDE,
 }
+
+# Tableau averages a geographic coordinate rather than summing it: summing
+# latitudes is meaningless, and a sheet that does it plots a single mark in the
+# middle of the ocean.
+GEO_AGGREGATION = "Avg"
+
+
+def bracket(name: str) -> str:
+    """Wrap an identifier in Tableau's ``[...]`` form, escaping any ``]``.
+
+    Tableau escapes a closing bracket inside an identifier by **doubling** it.
+    Without this, a CSV column called ``Val]ue`` compiles to ``[Val]ue]``, which
+    Tableau's identifier grammar reads as the field ``Val`` followed by garbage.
+    The XML stays well-formed and layer-2 validation still passes -- it compares
+    the same corrupt string on both sides -- so the damage reaches Tableau
+    silently. A header crafted as ``X]:nk].[sum:Other`` can make one column's
+    shelf reference resolve to a *different* field.
+
+    The compiler is immune to XML injection because it never concatenates markup
+    (T1). Identifiers are a second, independent grammar nested inside attribute
+    values, and this is its escape.
+    """
+    return f"[{name.replace(']', ']]')}]"
 
 
 @dataclass(frozen=True)
@@ -46,19 +87,35 @@ class Field:
     is_calculated: bool = False
     formula: str | None = None
     calc_name: str | None = None
+    semantic_role: str | None = None
 
     @property
     def bracketed(self) -> str:
-        return f"[{self.name}]"
+        return bracket(self.name)
 
     @property
     def reference_name(self) -> str:
         """The name used in ``column-instance/@column`` references."""
-        return f"[{self.calc_name}]" if self.is_calculated and self.calc_name else f"[{self.name}]"
+        base = self.calc_name if self.is_calculated and self.calc_name else self.name
+        return bracket(base)
 
     @property
     def is_measure(self) -> bool:
         return self.role == "measure"
+
+    @property
+    def is_geographic(self) -> bool:
+        return bool(self.semantic_role)
+
+    @property
+    def is_coordinate(self) -> bool:
+        """A latitude or longitude, i.e. a field that can go on a map's axes."""
+        return self.semantic_role in (GEO_LATITUDE, GEO_LONGITUDE)
+
+    @property
+    def default_aggregation(self) -> str:
+        """The aggregation Tableau applies when this field lands on a shelf."""
+        return GEO_AGGREGATION if self.is_coordinate else "Sum"
 
 
 def _infer_datatype(values: list[str]) -> str:
@@ -135,5 +192,18 @@ def infer_fields(csv_path: Path, *, sample_rows: int = 500) -> list[Field]:
     for ordinal, name in enumerate(clean_header):
         datatype = _infer_datatype(samples[ordinal])
         role, ftype = role_and_type(datatype)
-        fields.append(Field(name=name, datatype=datatype, role=role, type=ftype, ordinal=ordinal))
+        # A coordinate role is only claimed for a numeric column. A CSV whose
+        # "Latitude" column holds text ("unknown", "n/a") is not a coordinate, and
+        # tagging it as one produces a map that silently plots nothing.
+        semantic = geographic_role(name) if datatype in ("real", "integer") else None
+        fields.append(
+            Field(
+                name=name,
+                datatype=datatype,
+                role=role,
+                type=ftype,
+                ordinal=ordinal,
+                semantic_role=semantic,
+            )
+        )
     return fields

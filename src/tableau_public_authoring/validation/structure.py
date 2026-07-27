@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET  # noqa: S405 - hardened below via safe_parse
+import xml.etree.ElementTree as ET  # noqa: S405 - entity declarations blocked by _parse_twb
+import xml.parsers.expat  # noqa: S405 - used to REJECT entity declarations, not to parse
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,10 @@ from ..models.spec import WorkbookSpec
 from ..security.paths import PathSecurityError, safe_archive_name
 
 ZONE_GRID = 100000
+
+#: Largest ``.twb`` this module will parse. ElementTree builds the whole tree in
+#: memory, so without a ceiling the file's author picks the peak RSS.
+MAX_TWB_BYTES = 64 * 1024 * 1024
 
 # Elements Tableau writes only when publishing, plus one attribute that appears
 # in no fixture at any document version. None may ever reach a generated file.
@@ -369,15 +374,102 @@ def _check_published_only(root: ET.Element) -> list[Issue]:
     return issues
 
 
+class _EntityDeclarationFound(Exception):
+    """Internal signal: the document declares an entity."""
+
+
+class _RootElementReached(Exception):
+    """Internal signal: the prolog is over, so every declaration has been seen."""
+
+
+def _reject_entity_declarations(path: Path) -> None:
+    """Refuse a document that declares XML entities, before ElementTree sees it.
+
+    The comment this replaces claimed ElementTree was immune to billion-laughs.
+    Half of that was right and half was badly wrong:
+
+    * XXE — correct. An external entity is never fetched; the reference raises
+      ``undefined entity``, verified against ``<!ENTITY xxe SYSTEM "file:///etc/passwd">``.
+    * billion-laughs — wrong. Internal entities ARE expanded. A 343-byte ``.twb``
+      with six levels of ten-fold nesting expands to 1,000,000 characters inside
+      ``ET.parse``, and each further level multiplies that by ten.
+
+    The defence needs no new dependency. Entity declarations live in the internal
+    DTD subset, which is entirely before the root element, and expat reports each
+    declaration *without* expanding it — nothing is expanded until a reference is
+    encountered in content, which happens later. So a pre-pass that stops at the
+    root element start tag has seen every declaration while having done no work
+    proportional to their expansion. It reads only the prolog.
+
+    Nothing legitimate is lost: Tableau writes no DOCTYPE, and a ``.twb`` needs
+    no entities beyond the five XML predefines, which are not declarations.
+    """
+    size = path.stat().st_size
+    if size > MAX_TWB_BYTES:
+        raise PathSecurityError(
+            f".twb exceeds {MAX_TWB_BYTES} bytes and will not be parsed: {size}"
+        )
+
+    parser = xml.parsers.expat.ParserCreate()
+
+    def _on_entity_decl(name, *_args):
+        raise _EntityDeclarationFound(name)
+
+    def _on_start_element(*_args):
+        raise _RootElementReached
+
+    parser.EntityDeclHandler = _on_entity_decl
+    parser.StartElementHandler = _on_start_element
+    # Belt and braces: never dereference an external DTD subset or entity.
+    parser.ExternalEntityRefHandler = lambda *_args: False
+
+    try:
+        with path.open("rb") as fh:
+            parser.ParseFile(fh)
+    except _RootElementReached:
+        return
+    except _EntityDeclarationFound as exc:
+        raise PathSecurityError(
+            f".twb declares XML entity {str(exc)!r}; entity declarations are refused because "
+            f"nested internal entities expand exponentially during parsing"
+        ) from exc
+    except xml.parsers.expat.ExpatError:
+        # Malformed prolog. Let ElementTree produce the real diagnostic below.
+        return
+
+
+def _parse_twb(path: Path) -> ET.Element:
+    """Parse a ``.twb`` after refusing entity declarations. Raises PathSecurityError."""
+    _reject_entity_declarations(path)
+    return ET.parse(path).getroot()  # noqa: S314 - prolog vetted above
+
+
+def _has_populated_shelf(ws: ET.Element) -> bool:
+    """True if the worksheet puts at least one field on a shelf or an encoding.
+
+    The presence test this replaces could never be false. The compiler emits
+    ``<rows>``, ``<cols>`` and ``<encodings>`` unconditionally, so
+    ``find(".//rows") is not None`` and ``any(ws.iter("encodings"))`` were both
+    always true and ``empty_worksheet`` was dead code — a rows-only text table
+    ships ``<encodings />`` and ``<cols />`` and would have passed with every
+    shelf empty. What matters is whether those elements have anything *in* them:
+    ``<rows>``/``<cols>`` carry their pills as text, ``<encodings>`` as children.
+    """
+    for tag in ("rows", "cols"):
+        for el in ws.iter(tag):
+            if (el.text or "").strip():
+                return True
+    return any(len(enc) for enc in ws.iter("encodings"))
+
+
 def validate_generated(twb_path: Path, twbx_path: Path | None, spec: WorkbookSpec) -> list[Issue]:
     issues: list[Issue] = []
 
     # --- .twb is well-formed XML with the required skeleton ----------------
     try:
-        # ElementTree does not expand external entities or resolve DTDs, so it is
-        # not vulnerable to XXE/billion-laughs the way a validating parser is.
-        # Input here is either our own output or a user-selected local file.
-        root = ET.parse(twb_path).getroot()  # noqa: S314
+        root = _parse_twb(twb_path)
+    except PathSecurityError as exc:
+        return [Issue("error", "xml_unsafe", str(exc))]
     except ET.ParseError as exc:
         return [Issue("error", "xml_malformed", f".twb is not well-formed XML: {exc}")]
 
@@ -431,9 +523,7 @@ def validate_generated(twb_path: Path, twbx_path: Path | None, spec: WorkbookSpe
                     )
 
             # a publishable sheet must carry at least one encoding or shelf entry
-            has_shelf = w.find(".//rows") is not None or w.find(".//cols") is not None
-            has_enc = any(True for _ in w.iter("encodings"))
-            if not (has_shelf or has_enc):
+            if not _has_populated_shelf(w):
                 issues.append(
                     Issue(
                         "error",

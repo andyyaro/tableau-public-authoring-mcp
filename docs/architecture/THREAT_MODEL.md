@@ -29,7 +29,7 @@ Four boundaries matter:
 |---|---|
 | User's Tableau Public account | Publishing is public and attributable |
 | User's Tableau credentials | Must never be read, stored, or logged |
-| User's existing workbooks (esp. EV Charging) | Must not be overwritten |
+| The user's existing published workbooks | Must not be overwritten |
 | Local filesystem | Generation must not write outside allowed roots |
 | Other running applications | Automation must not act on them |
 | Existing MCP registrations | Must survive registration of this server |
@@ -87,8 +87,8 @@ test asserts generated XML contains no absolute path, no home directory, and no
 system username. Verified pre-publish, not just pre-commit.
 
 ### T7 — Destructive or misdirected UI automation
-Synthetic events could hit the wrong window — including the user's own EV
-Charging workbook, which is currently open.
+Synthetic events could hit the wrong window — including one of the user's own
+workbooks that happens to be open at the time.
 
 **Mitigation:** automation targets the process by **bundle identifier**
 (`com.tableausoftware.tableaupublic`), asserts the expected window title before
@@ -107,9 +107,22 @@ dry-run mode reports exactly what would happen without acting.
 A CSV could be enormous, contain a formula-injection payload (`=cmd|...`), or hold
 sensitive data.
 
-**Mitigation:** row/column caps enforced at inference time; CSV values are treated
-strictly as data and are never evaluated; the server warns when a spec marked
-`is_validation_test` uses a CSV outside the generated-fixtures directory.
+**Mitigation:** row/column caps enforced at inference time **and again when the
+extract is built**; CSV values are treated strictly as data and are never
+evaluated.
+
+**Correction.** This section previously claimed the server "warns when a spec
+marked `is_validation_test` uses a CSV outside the generated-fixtures directory".
+No such warning has ever existed, and `is_validation_test` has since been removed
+from the tool surface because it was never passed to the publish path either. A
+threat model that credits a control it does not have is worse than one that omits
+it, because it stops anyone from building the control.
+
+**Residual risk, stated plainly.** A CSV is embedded verbatim into the `.twbx`,
+and `publish_to_tableau_public` can then make that archive world-readable. Nothing
+inspects the CSV for sensitive content — the server cannot know what is sensitive.
+Choosing what to publish remains the user's decision, which is why publication
+requires `confirm_publish` and a collision check rather than an automatic gate.
 
 ### T10 — Supply chain
 Dependencies execute in-process.

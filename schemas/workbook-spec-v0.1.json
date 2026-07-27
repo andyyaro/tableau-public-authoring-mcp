@@ -1,114 +1,259 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/andyyaro/mcp-tableau-public-authoring/schemas/workbook-spec-v0.1.json",
+  "$id": "workbook-spec-v0.1.json",
   "title": "Tableau Public Authoring Specification v0.1",
-  "description": "Declarative description of a Tableau workbook to generate. Unknown properties are rejected everywhere.",
+  "description": "Declarative description of a Tableau workbook to generate. Unknown properties are rejected everywhere. Generated from tableau_public_authoring.models.spec.spec_json_schema(); edit that function, never this file. Structural validation only - the server additionally checks cross-references, field existence and encoding compatibility, so a valid document here can still be rejected.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["workbook", "data_sources", "worksheets", "output"],
+  "required": [
+    "workbook",
+    "data_sources",
+    "worksheets",
+    "output"
+  ],
   "properties": {
-    "spec_version": { "const": "0.1", "default": "0.1" },
+    "spec_version": {
+      "const": "0.1",
+      "default": "0.1"
+    },
     "workbook": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/displayName" },
-        "description": { "type": "string", "maxLength": 2000 }
+        "name": {
+          "$ref": "#/$defs/displayName"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "data_sources": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 20,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "path"],
+        "required": [
+          "id",
+          "path"
+        ],
         "properties": {
-          "id": { "$ref": "#/$defs/identifier" },
-          "type": { "const": "csv", "default": "csv" },
+          "id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "type": {
+            "const": "csv",
+            "default": "csv"
+          },
           "path": {
-            "type": "string",
-            "description": "Absolute path to a .csv file. Traversal segments are rejected.",
-            "pattern": "^/"
+            "$ref": "#/$defs/filesystemPath"
           }
         }
       }
     },
     "calculated_fields": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "default": [],
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "data_source", "formula"],
+        "required": [
+          "name",
+          "data_source",
+          "formula"
+        ],
         "properties": {
-          "name": { "$ref": "#/$defs/displayName" },
-          "data_source": { "$ref": "#/$defs/identifier" },
-          "formula": { "type": "string", "minLength": 1, "maxLength": 8000 },
-          "datatype": { "$ref": "#/$defs/datatype", "default": "string" }
+          "name": {
+            "$ref": "#/$defs/displayName"
+          },
+          "data_source": {
+            "$ref": "#/$defs/identifier"
+          },
+          "formula": {
+            "type": "string",
+            "minLength": 1
+          },
+          "datatype": {
+            "$ref": "#/$defs/datatype",
+            "default": "string"
+          }
         }
       }
     },
     "worksheets": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 50,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "template", "data_source"],
+        "required": [
+          "name",
+          "template",
+          "data_source"
+        ],
         "properties": {
-          "name": { "$ref": "#/$defs/displayName" },
+          "name": {
+            "$ref": "#/$defs/displayName"
+          },
           "template": {
-            "enum": ["bar", "line", "text_table", "heatmap", "scatter", "circle"]
+            "enum": [
+              "bar",
+              "line",
+              "text_table",
+              "heatmap",
+              "scatter",
+              "circle",
+              "map"
+            ]
           },
-          "data_source": { "$ref": "#/$defs/identifier" },
-          "rows": { "type": "array", "items": { "$ref": "#/$defs/encodingRef" } },
-          "columns": { "type": "array", "items": { "$ref": "#/$defs/encodingRef" } },
-          "color": { "$ref": "#/$defs/encodingRef" },
-          "size": { "$ref": "#/$defs/encodingRef" },
-          "label": { "$ref": "#/$defs/encodingRef" },
+          "data_source": {
+            "$ref": "#/$defs/identifier"
+          },
+          "rows": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Fields on the Rows shelf.",
+            "items": {
+              "$ref": "#/$defs/encodingRef"
+            }
+          },
+          "columns": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Fields on the Columns shelf.",
+            "items": {
+              "$ref": "#/$defs/encodingRef"
+            }
+          },
+          "color": {
+            "$ref": "#/$defs/encodingShelf"
+          },
+          "size": {
+            "$ref": "#/$defs/encodingShelf",
+            "description": "Needs a measure or an aggregation; a bare dimension has no magnitude to scale a mark by."
+          },
+          "label": {
+            "$ref": "#/$defs/encodingShelf"
+          },
           "detail": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "description": "Tableau's Detail shelf. Each dimension listed here becomes a grouping key, raising the mark count (e.g. one mark per site instead of one per Color value). A field may appear at most once.",
-            "items": { "$ref": "#/$defs/encodingRef" }
+            "items": {
+              "$ref": "#/$defs/encodingRef"
+            }
           },
-          "tooltips": { "type": "array", "items": { "$ref": "#/$defs/encodingRef" } },
-          "filters": { "type": "array", "items": { "type": "string" } },
-          "title": { "type": "string", "maxLength": 300 },
-          "subtitle": { "type": "string", "maxLength": 500 }
+          "tooltips": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Fields shown on hover. A dimension here is promoted to the Attribute aggregation automatically, because derivation 'None' renders the pill red and the sheet blank.",
+            "items": {
+              "$ref": "#/$defs/encodingRef"
+            }
+          },
+          "filters": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Field names to expose as interactive filter cards. Only CATEGORICAL (value-picker) filters are generated, so each name must be a dimension; a measure is rejected because a value picker over a continuous number is not a usable card. Range filters are not generated.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fit": {
+            "enum": [
+              "standard",
+              "fit_width",
+              "fit_height",
+              "entire_view",
+              null
+            ],
+            "description": "How the viz fills the canvas. Omitted or null uses Tableau's 'Standard' fit, which draws a small viz tucked into the top-left corner."
+          },
+          "latitude": {
+            "$ref": "#/$defs/encodingShelf",
+            "description": "Map only. The latitude column, placed on Rows. Inferred from a column named Latitude/Lat when omitted. Always averaged: summing coordinates collapses every mark onto one point."
+          },
+          "longitude": {
+            "$ref": "#/$defs/encodingShelf",
+            "description": "Map only. The longitude column, placed on Columns. Inferred from a column named Longitude/Long/Lon/Lng when omitted."
+          }
         }
       }
     },
     "dashboards": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "default": [],
-      "maxItems": 10,
-      "description": "EXPERIMENTAL / UNVERIFIED. Dashboard XML was reverse-engineered from published fixtures at document version 18.1 written by older Tableau builds; no generated dashboard has been opened in Tableau Public 2026.2.0. A dashboard may fail to load. See docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md.",
+      "description": "VERIFIED against Tableau Public 2026.2.0: title, worksheet zones and fixed sizing all render. Dashboard extras - filter cards, colour legends, highlighters, parameter controls, images, floating zones, device layouts and actions - are understood but not generated. See docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "worksheets"],
+        "required": [
+          "name",
+          "worksheets"
+        ],
         "properties": {
           "name": {
             "$ref": "#/$defs/displayName",
-            "description": "Unique across dashboards, and distinct from every worksheet name."
+            "description": "Unique across dashboards, and distinct from every worksheet name: both are registered in <windows> by name."
           },
           "title": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "maxLength": 300,
             "description": "Dashboard title. Emits both the title text and the title card that gives it canvas space."
           },
           "direction": {
-            "enum": ["vertical", "horizontal"],
+            "enum": [
+              "vertical",
+              "horizontal"
+            ],
             "default": "vertical",
             "description": "Flow direction of the single layout container holding the worksheets."
           },
           "sizing_mode": {
-            "enum": ["fixed", "automatic"],
+            "enum": [
+              "fixed",
+              "automatic"
+            ],
             "default": "fixed",
             "description": "'fixed' declares the pixel canvas below; 'automatic' fits the window and forbids width/height."
           },
@@ -131,7 +276,9 @@
             "minItems": 1,
             "maxItems": 20,
             "description": "Worksheets to place, in layout order. Each must exist and may appear at most once per dashboard.",
-            "items": { "$ref": "#/$defs/dashboardZone" }
+            "items": {
+              "$ref": "#/$defs/dashboardZone"
+            }
           }
         }
       }
@@ -139,10 +286,17 @@
     "output": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["directory"],
+      "required": [
+        "directory"
+      ],
       "properties": {
-        "directory": { "type": "string", "pattern": "^/" },
-        "package_twbx": { "type": "boolean", "default": true }
+        "directory": {
+          "$ref": "#/$defs/filesystemPath"
+        },
+        "package_twbx": {
+          "type": "boolean",
+          "default": true
+        }
       }
     }
   },
@@ -154,26 +308,55 @@
     },
     "displayName": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 120,
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9 _\\-.,()/&'%:+#]*$"
+      "pattern": "^\\s*[A-Za-z0-9][A-Za-z0-9 _\\-.,()/&'%:+#]{0,119}\\s*$",
+      "description": "A caption shown in Tableau. Letters, digits, spaces and . , - _ ( ) / & ' % : + # only, up to 120 characters. Surrounding whitespace is allowed and trimmed by the server."
+    },
+    "filesystemPath": {
+      "type": "string",
+      "pattern": "^[/~]",
+      "description": "An absolute path, or a '~' path the server expands. Traversal segments ('..') and null bytes are rejected, and an input file must exist, be a regular file and be under the CSV size caps."
     },
     "datatype": {
-      "enum": ["string", "integer", "real", "boolean", "date", "datetime"]
+      "enum": [
+        "string",
+        "boolean",
+        "date",
+        "datetime",
+        "integer",
+        "real"
+      ]
     },
     "aggregation": {
-      "enum": ["Sum", "Avg", "Min", "Max", "Count", "CountD", "None", "Attribute"]
+      "enum": [
+        "Sum",
+        "Avg",
+        "Min",
+        "Max",
+        "Count",
+        "CountD",
+        "None",
+        "Attribute"
+      ]
     },
     "dashboardZone": {
-      "description": "A worksheet placed on a dashboard, referenced by exact worksheet name.",
+      "description": "A worksheet placed on a dashboard, referenced by exact worksheet name -- the compiled zone has no id-based link, so a mismatched name renders an empty box.",
       "oneOf": [
-        { "type": "string", "minLength": 1, "description": "Worksheet name, title shown" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Worksheet name, title shown"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["worksheet"],
+          "required": [
+            "worksheet"
+          ],
           "properties": {
-            "worksheet": { "type": "string", "minLength": 1 },
+            "worksheet": {
+              "type": "string",
+              "minLength": 1
+            },
             "show_title": {
               "type": "boolean",
               "default": true,
@@ -185,15 +368,38 @@
     },
     "encodingRef": {
       "oneOf": [
-        { "type": "string", "description": "Field name, no aggregation" },
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Field name, no aggregation"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["field"],
+          "required": [
+            "field"
+          ],
           "properties": {
-            "field": { "type": "string" },
-            "aggregation": { "$ref": "#/$defs/aggregation", "default": "None" }
+            "field": {
+              "type": "string",
+              "minLength": 1
+            },
+            "aggregation": {
+              "$ref": "#/$defs/aggregation",
+              "default": "None"
+            }
           }
+        }
+      ]
+    },
+    "encodingShelf": {
+      "description": "A single-value encoding shelf. null means the encoding is absent, exactly as omitting the key does.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/encodingRef"
+        },
+        {
+          "type": "null"
         }
       ]
     }

@@ -37,7 +37,21 @@ from .models.spec import (
 # Worksheet dataclass is treated as one, so a newly added encoding is reported
 # without anyone remembering to update this file.
 _NON_ENCODING_WORKSHEET_FIELDS = frozenset(
-    {"name", "template", "data_source", "rows", "columns", "filters", "title", "subtitle", "fit"}
+    {
+        "name",
+        "template",
+        "data_source",
+        "rows",
+        "columns",
+        "filters",
+        "title",
+        "subtitle",
+        "fit",
+        # A map's axes, not encodings: the compiler decides which shelf each goes
+        # on, because latitude-on-rows is a rule of the projection.
+        "latitude",
+        "longitude",
+    }
 )
 
 TEMPLATE_REQUIREMENTS = {
@@ -47,6 +61,10 @@ TEMPLATE_REQUIREMENTS = {
     "heatmap": "rows + columns + a measure on color",
     "scatter": "aggregated measures on BOTH rows and columns",
     "circle": "rows + columns",
+    "map": (
+        "latitude + longitude (inferred from column names when omitted), plus at least "
+        "one dimension on detail/color/label so each location gets its own mark"
+    ),
 }
 
 
@@ -76,7 +94,17 @@ def describe_capabilities() -> dict[str, Any]:
         "aggregations": list(AGGREGATIONS),
         "canvas_fit": list(FIT_MODES),
         "calculated_fields": True,
-        "categorical_filters": True,
+        "categorical_filters": (
+            "dimensions only. A filter on a measure is rejected: the compiler can only "
+            "emit a categorical filter, which over a measure produces a value picker "
+            "listing every distinct number. Band the measure with a calculated_field "
+            "and filter that instead."
+        ),
+        "geographic_roles": (
+            "latitude/longitude columns are detected by name and tagged with the "
+            "[Geographical] semantic role, which is what puts a background map "
+            "behind the 'map' template"
+        ),
         "titles_and_subtitles": True,
         "packaging": [".twb", ".twbx"],
     }
@@ -97,7 +125,11 @@ def describe_capabilities() -> dict[str, Any]:
         "live_connections": (
             "impossible: Tableau Public rejects non-extract data sources (Error 3C242D89)"
         ),
-        "maps": "geographic roles are inferred, but map marks are unverified",
+        "map_extras": (
+            "filled/choropleth maps, custom territories, map layers, spatial files "
+            "and custom geocoding are not generated; the 'map' template plots "
+            "latitude/longitude symbol marks on Tableau's background map"
+        ),
         "dashboard_extras": (
             "filter cards, colour legends, highlighters, parameter controls, images, "
             "floating zones, device layouts and dashboard actions are not generated"

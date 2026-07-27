@@ -28,6 +28,7 @@ from ..desktop.tableau_app import (
     real_key,
     screenshot_window,
 )
+from ..desktop.window_control import activate_app, normalise_stem, tableau_is_active
 
 FILE_MENU = "File"
 SERVER_MENU = "Server"
@@ -44,6 +45,12 @@ class PublishResult:
     public_url: str | None = None
     url_verified: bool = False
     http_status: int | None = None
+    # Whether THIS publish was proved to have created the workbook at public_url,
+    # as opposed to a workbook of that name having already been there. See
+    # _await_published_url: the profile endpoint exposes no timestamp, so for an
+    # overwrite this is honestly reported as False rather than guessed.
+    publication_confirmed: bool = False
+    confirmation_note: str | None = None
     error: str | None = None
     screenshots: list[str] = field(default_factory=list)
     steps: list[str] = field(default_factory=list)
@@ -56,6 +63,8 @@ class PublishResult:
             "public_url": self.public_url,
             "url_verified": self.url_verified,
             "http_status": self.http_status,
+            "publication_confirmed": self.publication_confirmed,
+            "confirmation_note": self.confirmation_note,
             "error": self.error,
             "screenshots": self.screenshots,
             "steps": self.steps,
@@ -100,6 +109,12 @@ MIN_SIGN_IN_AREA = 40_000
 # waiting for the user. An already-authenticated session flashes one briefly.
 SIGN_IN_PATIENCE = 25.0
 
+# How long the save dialog is given to appear after the publish command is sent.
+# Named because the failure message quotes it: the two disagreed for a while, and
+# a message that says "30s" after a 90s wait sends people looking in the wrong
+# place.
+SAVE_DIALOG_TIMEOUT = 90.0
+
 
 def detect_sign_in_required() -> bool:
     """True only if a sign-in window is genuinely on screen at a usable size."""
@@ -114,7 +129,14 @@ def detect_sign_in_required() -> bool:
     for w in info or []:
         if "Tableau" not in (w.get("kCGWindowOwnerName") or ""):
             continue
-        title = (w.get("kCGWindowName") or "").lower()
+        raw_title = w.get("kCGWindowName") or ""
+        # A document window is titled "Tableau Public - <stem>" and is ~1.2M px2,
+        # so it clears the area test easily. Publishing a workbook called
+        # "Customer_Log_In_Funnel" would match "log in" against its own window and
+        # report sign-in required forever, to an already-authenticated user.
+        if raw_title.startswith(DOC_TITLE_PREFIX):
+            continue
+        title = raw_title.lower()
         if not any(h in title for h in SIGN_IN_HINTS):
             continue
         b = w.get("kCGWindowBounds") or {}
@@ -164,10 +186,19 @@ def document_windows() -> list[dict]:
     return out
 
 
+# A minimized document keeps its title and stays in the on-screen list as a Dock
+# tile of roughly 140x190. It cannot be the active document, so it must never be
+# mistaken for the frontmost one -- the publish precondition would "confirm" a
+# workbook that cannot receive the menu command.
+MIN_ACTIVE_DOC_AREA = 320 * 320
+
+
 def frontmost_window_title() -> str | None:
-    """Title of Tableau's frontmost *document* window."""
-    docs = document_windows()
-    return docs[0]["title"] if docs else None
+    """Title of Tableau's frontmost *document* window, ignoring Dock tiles."""
+    for d in document_windows():
+        if d["width"] * d["height"] >= MIN_ACTIVE_DOC_AREA:
+            return d["title"]
+    return None
 
 
 def raise_document_window(title_contains: str) -> tuple[bool, str]:
@@ -209,21 +240,31 @@ def raise_document_window(title_contains: str) -> tuple[bool, str]:
     return False, f"raise attempted but frontmost is still {now!r}"
 
 
-def assert_target_frontmost(expected_substring: str) -> tuple[bool, str]:
+def assert_target_frontmost(expected: str) -> tuple[bool, str]:
     """Refuse to act unless the intended workbook is the active document.
 
     Without this guard a menu click is dispatched to whatever window happens to
     be frontmost — which could be one of the user's own workbooks. Publishing is
     irreversible, so this is a hard precondition, not a warning.
+
+    The match is **exact** on the normalised stem, never a substring. A substring
+    test passes when the frontmost window merely *contains* the requested name,
+    so asking to publish ``Q3_Sales`` while ``Q3_Sales_Draft`` is in front would
+    push the draft to the public internet under the intended name — and report
+    success. ``window_control.close_document`` already requires an exact match for
+    exactly this reason, and closing a workbook is the *recoverable* operation of
+    the two.
     """
     title = frontmost_window_title()
     if title is None:
         return False, "could not determine Tableau's frontmost window; refusing to publish"
-    if expected_substring.lower().replace("_", " ") not in title.lower().replace("_", " "):
+    if normalise_stem(title) != normalise_stem(expected):
+        near = " It differs only by a suffix, which is exactly the case this check exists to catch."
+        hint = near if normalise_stem(expected) in normalise_stem(title) else ""
         return False, (
-            f"SAFETY ABORT: frontmost Tableau window is {title!r}, which does not match the "
-            f"intended target {expected_substring!r}. Refusing to invoke publish, because the "
-            f"menu command would apply to the wrong workbook."
+            f"SAFETY ABORT: frontmost Tableau window is {title!r}, which is not the intended "
+            f"target {expected!r}.{hint} Refusing to publish, because the command would apply "
+            f"to the wrong workbook."
         )
     return True, f"frontmost window confirmed as {title!r}"
 
@@ -238,9 +279,8 @@ def _focus_workbook(window_title_contains: str, *, file_path: Path | None = None
     workbook. It now delegates to the window-control module, which uses window
     server bounds and CGEvent, and is a no-op when the target is already active.
     """
-    needle = window_title_contains.lower().replace("_", " ")
-    current = frontmost_window_title() or ""
-    if needle in current.lower().replace("_", " "):
+    needle = normalise_stem(window_title_contains)
+    if normalise_stem(frontmost_window_title() or "") == needle:
         return True
 
     try:
@@ -258,8 +298,7 @@ def _focus_workbook(window_title_contains: str, *, file_path: Path | None = None
     except DesktopError:
         return False
     time.sleep(1.0)
-    now = frontmost_window_title() or ""
-    return needle in now.lower().replace("_", " ")
+    return normalise_stem(frontmost_window_title() or "") == needle
 
 
 def file_menu_items() -> list[str]:
@@ -396,9 +435,16 @@ def _invoke_via_server_menu() -> tuple[bool, str]:
       end tell
     end tell
     """
+    # NOTE: a returned "ok" only means the AX calls did not raise. This project has
+    # documented repeatedly that System Events `click` on Tableau's Qt menus
+    # reports success and does nothing, so success is NOT claimed here -- the
+    # caller decides, by waiting for the save dialog to actually appear.
     try:
         if osascript(script) == "ok":
-            return True, "invoked via Server > Tableau Public (Desktop Professional path)"
+            return True, (
+                "sent Server > Tableau Public menu clicks (unconfirmed: AX clicks on "
+                "Qt menus can silently no-op; the save dialog is the real evidence)"
+            )
     except DesktopError:
         pass
     return False, "Server menu publish path unavailable"
@@ -605,10 +651,33 @@ def publish(
     """
     res = PublishResult(published=False, requires_sign_in=False, workbook_name=public_name)
 
+    # Snapshot what is already on the profile. Without this, a workbook of the
+    # same name that was ALREADY published satisfies the post-publish poll on its
+    # first iteration, and the flow reports published=true with a verified URL
+    # pointing at the old workbook -- even if the upload failed server-side.
+    # Every overwrite hit this.
+    before = _profile_repo_urls(profile) if profile else None
+
     if not _focus_workbook(workbook_window, file_path=workbook_path):
         res.error = f"could not focus a Tableau window matching {workbook_window!r}"
         return res
     res.steps.append(f"focused window matching {workbook_window!r}")
+
+    # Command+Shift+S is posted with CGEventPost(kCGHIDEventTap, ...) and lands in
+    # whichever APPLICATION owns keyboard focus. Every check here ranks only
+    # Tableau's own windows, so they all pass happily while the user is in an
+    # editor or a browser -- and the shortcut fires that app's "Save As" instead.
+    if not tableau_is_active():
+        activate_app()
+        time.sleep(1.0)
+        if not tableau_is_active():
+            res.error = (
+                "refusing to publish: Tableau could not be brought to the foreground, so "
+                "the publish keystroke would be delivered to whichever application "
+                "currently has keyboard focus."
+            )
+            return res
+        res.steps.append("activated Tableau (it did not have keyboard focus)")
 
     # HARD PRECONDITION: never dispatch a publish command unless the intended
     # workbook is genuinely the active document, or it would publish the wrong one.
@@ -632,7 +701,7 @@ def publish(
     # sight of it reported "sign in required" to an already-signed-in user. So we
     # only hand off if the sign-in window PERSISTS, meaning it is genuinely waiting
     # for input.
-    deadline = time.monotonic() + 90.0
+    deadline = time.monotonic() + SAVE_DIALOG_TIMEOUT
     sign_in_since: float | None = None
     dialog = None
     while time.monotonic() < deadline:
@@ -671,7 +740,8 @@ def publish(
 
     if not dialog:
         res.error = (
-            f"the {SAVE_DIALOG_TITLE!r} dialog did not appear within 30s. The menu "
+            f"the {SAVE_DIALOG_TITLE!r} dialog did not appear within "
+            f"{SAVE_DIALOG_TIMEOUT:.0f}s. The menu "
             f"command was dispatched, so Tableau may be busy or the workbook may have "
             f"no fields on any shelf (Tableau disables publishing for a field-less viz)."
         )
@@ -682,7 +752,18 @@ def publish(
         ok_t, why_t = set_dialog_title(public_name)
         res.steps.append(f"title: {why_t}")
         if not ok_t:
-            res.steps.append("continuing with Tableau's pre-filled title")
+            # Do NOT continue. Tableau's pre-filled title comes from the FILE NAME,
+            # which the overwrite check never examined -- it checked public_name.
+            # Publishing anyway can silently replace a different workbook, and the
+            # whole point of the collision check is that this is irreversible.
+            res.error = (
+                f"refusing to publish: the Workbook Title field could not be set to "
+                f"{public_name!r} ({why_t}). Tableau would fall back to its pre-filled "
+                f"title, which is derived from the file name and was never checked for "
+                f"a collision. The save dialog is still open - set the title and click "
+                f"Save yourself, or close the dialog and re-run."
+            )
+            return res
 
     try:
         shot = screenshot_dir / "publish-01-save-dialog.png"
@@ -722,7 +803,9 @@ def publish(
         )
         return res
 
-    url = _await_published_url(profile, public_name, timeout=wait_timeout)
+    url, was_new = _await_published_url(
+        profile, public_name, timeout=wait_timeout, known_before=before
+    )
     if not url:
         res.error = (
             f"Publication was submitted but {public_name!r} did not appear on profile "
@@ -737,29 +820,79 @@ def publish(
     res.url_verified = verified
     res.http_status = status
     res.published = verified
+    res.publication_confirmed = verified and was_new
+    if was_new:
+        res.confirmation_note = "this workbook was not on the profile before publishing"
+    else:
+        res.confirmation_note = (
+            "a workbook of this name was ALREADY on the profile before publishing, so a "
+            "reachable URL does not by itself prove this upload succeeded. Tableau's "
+            "profile API exposes no publish timestamp, so freshness cannot be checked "
+            "programmatically - open the URL and confirm the content is what you expect."
+        )
     if not verified:
         res.error = f"published URL returned HTTP {status}"
     return res
 
 
-def _await_published_url(profile: str, title: str, *, timeout: float) -> str | None:
-    """Poll the user's public profile until the newly published workbook appears."""
+def _profile_repo_urls(profile: str) -> set[str] | None:
+    """Repo URLs currently published, or None if the profile could not be read.
+
+    None is distinct from the empty set: "we could not ask" must never be
+    mistaken for "nothing is published".
+    """
+    try:
+        from .existing import list_published_workbooks
+
+        return {wb.repo_url for wb in list_published_workbooks(profile)}
+    except Exception:  # noqa: BLE001 - a failed snapshot must not block publishing
+        return None
+
+
+def _await_published_url(
+    profile: str,
+    title: str,
+    *,
+    timeout: float,
+    known_before: set[str] | None = None,
+) -> tuple[str | None, bool]:
+    """Poll the profile for the workbook. Returns ``(url, proved_new)``.
+
+    ``proved_new`` is True only when the workbook's repo URL was absent from
+    ``known_before``, i.e. this publish demonstrably created it.
+
+    This used to match on title alone and return the first hit. For a NEW
+    workbook that is sound. For an overwrite it is not: the pre-existing
+    workbook satisfies the very first poll, so the caller received a verified
+    URL and ``published=True`` regardless of whether the upload actually
+    succeeded. Tableau's profile API returns no publish timestamp, view counts
+    move for unrelated reasons, and an overwrite reuses the same repo URL --
+    so for that case freshness is genuinely unprovable here, and the honest
+    answer is ``proved_new=False`` rather than a guess.
+    """
     try:
         from .existing import list_published_workbooks
     except ImportError:  # pragma: no cover - module lands with overwrite protection
-        return None
+        return None, False
 
     wanted = {title.strip().lower(), title.strip().lower().replace(" ", "_")}
     deadline = time.monotonic() + timeout
+    fallback: str | None = None
     while time.monotonic() < deadline:
         try:
             for wb in list_published_workbooks(profile):
-                if wb.title.strip().lower() in wanted:
-                    return wb.direct_url
+                if wb.title.strip().lower() not in wanted:
+                    continue
+                if known_before is not None and wb.repo_url not in known_before:
+                    return wb.direct_url, True  # demonstrably created by this publish
+                # Present, but it was there before (or we never got a snapshot).
+                # Keep polling in case a genuinely new entry appears, and fall
+                # back to this one when the deadline expires.
+                fallback = fallback or wb.direct_url
         except Exception as exc:  # noqa: BLE001 - polling must not abort the publish
             # A transient profile-query failure is expected while Tableau is still
             # processing the upload; keep polling rather than reporting a failure.
             last_error = exc
             _ = last_error
         time.sleep(5)
-    return None
+    return fallback, False

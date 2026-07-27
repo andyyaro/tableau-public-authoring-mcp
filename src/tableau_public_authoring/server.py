@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
-import time
 from pathlib import Path
 from typing import Any
 
@@ -14,10 +14,14 @@ from mcp.types import TextContent, Tool
 from .capabilities import describe_capabilities, describe_templates
 from .compiler.build import build_workbook as _build
 from .desktop import tableau_app as app
-from .models.spec import SPEC_VERSION, SpecError, parse_spec
+from .models.spec import SPEC_VERSION, SpecError, parse_spec, spec_json_schema
 from .packaging.twbx import inspect_twbx
 from .publishing import publisher
-from .security.paths import PathSecurityError, resolve_output_dir
+from .security.paths import PathSecurityError, resolve_input_file, resolve_output_dir
+
+# A .twbx embeds every Hyper extract, so it is legitimately far larger than the
+# CSV ceiling resolve_input_file defaults to.
+MAX_WORKBOOK_BYTES = 512 * 1024 * 1024
 
 SERVER_NAME = "tableau-public-authoring"
 SERVER_VERSION = "0.1.0"
@@ -37,20 +41,51 @@ def _err(message: str, **extra: Any) -> list[TextContent]:
     ]
 
 
-_SPEC_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["spec"],
-    "properties": {
-        "spec": {
-            "type": "object",
-            "description": (
-                "Workbook authoring specification (spec_version 0.1). See "
-                "schemas/workbook-spec-v0.1.json for the full contract."
-            ),
-        }
-    },
-}
+def _spec_argument_schema() -> dict[str, Any]:
+    """The publish-time contract for a ``spec`` argument.
+
+    The real schema is generated from the spec model by
+    ``models.spec.spec_json_schema`` and pinned to it by
+    ``tests/unit/test_schema_contract.py``, so what a client is told and what
+    ``parse_spec`` enforces cannot drift apart.
+
+    This used to advertise ``{"type": "object"}`` plus prose pointing at
+    ``schemas/workbook-spec-v0.1.json`` -- a file that is not packaged in the
+    wheel, so an installed deployment sent callers to a path that did not exist.
+    """
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["spec"],
+        "properties": {"spec": spec_json_schema()},
+    }
+
+
+_SPEC_SCHEMA: dict[str, Any] = _spec_argument_schema()
+
+
+def _build_argument_schema() -> dict[str, Any]:
+    """``build_workbook``'s arguments: a spec, plus an explicit overwrite flag.
+
+    The compiler refuses to overwrite a file it cannot prove it wrote itself, so
+    without a way to say "yes, replace it" a caller who has a same-named foreign
+    file in the output directory has no recovery except renaming it by hand.
+    Rebuilding the *same* spec never needs this -- prior output is recognised by
+    provenance and replaced silently, because it is regenerable.
+
+    Deliberately not offered on ``validate_workbook_spec``: a dry run writes
+    nothing, so it has nothing to overwrite.
+    """
+    schema = _spec_argument_schema()
+    schema["properties"]["overwrite"] = {
+        "type": "boolean",
+        "default": False,
+        "description": (
+            "Replace files in the output directory that this server did not "
+            "generate. Rebuilding the same workbook does not require it."
+        ),
+    }
+    return schema
 
 
 @server.list_tools()
@@ -82,10 +117,11 @@ async def list_tools() -> list[Tool]:
             description=(
                 "PRIMARY TOOL. Compile a specification into a .twb and packaged .twbx "
                 "with Hyper extracts (required by Tableau Public). Writes files to the "
-                "spec's output.directory. Deterministic: identical specs produce "
-                "identical output."
+                "spec's output.directory. The .twb is byte-deterministic for an "
+                "identical spec; the .twbx digest is not, because the embedded Hyper "
+                "extract carries non-deterministic state."
             ),
-            inputSchema=_SPEC_SCHEMA,
+            inputSchema=_build_argument_schema(),
         ),
         Tool(
             name="inspect_local_workbook",
@@ -150,11 +186,16 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["workbook_window", "public_name", "confirm_publish"],
+                "required": ["workbook_window", "public_name", "confirm_publish", "profile"],
                 "properties": {
                     "workbook_window": {
                         "type": "string",
-                        "description": "Substring of the open Tableau window title to publish",
+                        "description": (
+                            "The open workbook's exact name (its window title without the "
+                            "'Tableau Public - ' prefix). Matched exactly, not as a substring, "
+                            "because publishing is irreversible: a substring match would let "
+                            "'Q3_Sales' publish 'Q3_Sales_Draft'."
+                        ),
                     },
                     "public_name": {
                         "type": "string",
@@ -169,10 +210,13 @@ async def list_tools() -> list[Tool]:
                         "default": False,
                         "description": "Allow overwriting an existing workbook of the same name.",
                     },
-                    "is_validation_test": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": "Marks this as a labelled validation artifact.",
+                    "workbook_path": {
+                        "type": "string",
+                        "description": (
+                            "Absolute path to the .twbx being published. Optional but "
+                            "recommended: it lets a minimized workbook be raised reliably "
+                            "with `open -a` instead of a coordinate click."
+                        ),
                     },
                     "profile": {
                         "type": "string",
@@ -259,35 +303,51 @@ async def _dispatch(name: str, args: dict[str, Any]) -> list[TextContent]:
         )
 
     if name == "build_workbook":
-        result = _build(args["spec"])
+        # Spawns a Hyper process per data source; seconds, not milliseconds.
+        result = await asyncio.to_thread(
+            _build, args["spec"], overwrite=bool(args.get("overwrite", False))
+        )
         return _ok({"build": result.to_dict()})
 
     if name == "inspect_local_workbook":
-        p = Path(args["path"]).expanduser()
-        if not p.is_absolute():
-            return _err("path must be absolute")
-        if not p.exists():
-            return _err(f"file does not exist: {p}")
+        # resolve_input_file enforces absoluteness, is_file(), the suffix and the
+        # size cap. The hand-rolled check it replaces had none of those: a path
+        # naming a FIFO passed, and zipfile.is_zipfile then blocked forever in
+        # open(), wedging this single-threaded server permanently.
+        p = resolve_input_file(
+            args["path"], suffixes=(".twbx",), max_bytes=MAX_WORKBOOK_BYTES
+        )
         return _ok({"inspection": inspect_twbx(p)})
 
     if name == "get_tableau_public_app_status":
         return _ok({"status": app.status().to_dict()})
 
     if name == "open_in_tableau_public":
-        p = Path(args["path"]).expanduser()
-        res = app.open_workbook(p, timeout=float(args.get("timeout_s", 90)))
+        # This hands a caller-supplied path straight to `open -a Tableau`. It
+        # previously validated nothing at all, not even that the path was absolute.
+        p = resolve_input_file(
+            args["path"], suffixes=(".twb", ".twbx"), max_bytes=MAX_WORKBOOK_BYTES
+        )
+        res = await asyncio.to_thread(
+            app.open_workbook, p, timeout=float(args.get("timeout_s", 90))
+        )
         return _ok({"open": res})
 
     if name == "validate_in_tableau_public":
-        p = Path(args["path"]).expanduser()
+        p = resolve_input_file(
+            args["path"], suffixes=(".twb", ".twbx"), max_bytes=MAX_WORKBOOK_BYTES
+        )
         shot_dir = resolve_output_dir(args.get("screenshot_dir") or str(p.parent / "screenshots"))
-        res = app.open_workbook(p, timeout=120)
+        # open_workbook polls with time.sleep and shells out to `open`/osascript.
+        # Run off the event loop: for up to two minutes the stdio server could not
+        # read the next request, answer a ping, or honour a cancellation.
+        res = await asyncio.to_thread(app.open_workbook, p, timeout=120)
         payload: dict[str, Any] = {"open": res, "layers": {"layer3_open": res["opened"]}}
         if not res["opened"]:
             payload["layers"]["layer4_screenshot"] = False
             return _ok({"validation": payload})
 
-        time.sleep(float(args.get("settle_s", 8)))
+        await asyncio.sleep(float(args.get("settle_s", 8)))
         win = app.find_window(p.stem) or {"id": res.get("window_id")}
         shot = shot_dir / f"validate-{p.stem}.png"
         try:
@@ -337,21 +397,43 @@ async def _dispatch(name: str, args: dict[str, Any]) -> list[TextContent]:
         overwrite = bool(args.get("overwrite", False))
         profile = args.get("profile")
 
-        # Overwrite protection: refuse to clobber an existing published workbook.
-        if profile:
-            try:
-                from .publishing.existing import assert_safe_to_publish
+        # Overwrite protection. This is the only thing standing between a publish
+        # and silently replacing a workbook the user already has online, and
+        # publication is irreversible. It used to be gated on `if profile:` while
+        # `profile` was optional, so omitting one argument skipped the check
+        # entirely -- the opposite of the "fails CLOSED" guarantee in
+        # publishing/existing.py. It is now required.
+        if not profile:
+            return _err(
+                "refusing to publish: 'profile' is required. Without it the server cannot "
+                "check whether a workbook of this name is already published, and publishing "
+                "would silently replace it. Pass your Tableau Public profile name."
+            )
+        try:
+            from .publishing.existing import assert_safe_to_publish
+        except ImportError as exc:
+            # Never downgrade a missing guard to a warning.
+            return _err(
+                f"refusing to publish: the overwrite-protection module could not be "
+                f"imported ({exc}), so a name collision cannot be ruled out."
+            )
+        safe, why = assert_safe_to_publish(str(profile), public_name, overwrite=overwrite)
+        if not safe:
+            return _err(why)
 
-                safe, why = assert_safe_to_publish(str(profile), public_name, overwrite=overwrite)
-                if not safe:
-                    return _err(why)
-            except ImportError:
-                pass
-
-        res = publisher.publish(
+        # publisher.publish drives a GUI for up to several minutes.
+        wb_path = args.get("workbook_path")
+        res = await asyncio.to_thread(
+            publisher.publish,
             workbook_window=str(args["workbook_window"]),
             public_name=public_name,
             screenshot_dir=shot_dir,
+            # Passing the file lets a minimized workbook be raised with `open -a`,
+            # which window_control documents as the reliable route. This was never
+            # threaded through, so only the brittle click fallback was reachable.
+            workbook_path=resolve_input_file(wb_path, suffixes=(".twb", ".twbx"))
+            if wb_path
+            else None,
             profile=str(profile) if profile else None,
             set_title=bool(args.get("set_title", True)),
         )
@@ -361,7 +443,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> list[TextContent]:
         url = str(args["url"])
         if not url.startswith("https://public.tableau.com/"):
             return _err("url must be a https://public.tableau.com/ address")
-        okd, status = publisher.verify_url(url)
+        okd, status = await asyncio.to_thread(publisher.verify_url, url)
         return _ok({"verified": okd, "http_status": status, "url": url})
 
     return _err(f"unknown tool: {name}")

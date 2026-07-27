@@ -6,17 +6,42 @@ that stopped a workbook loading, and two where it loaded perfectly and rendered
 nothing at all. Unit tests cannot see either class of failure — the `.twb` is
 well-formed, deterministic and structurally valid in both cases.
 
+## What is in here
+
+| File | What it opens |
+|---|---|
+| `test_render_templates.py` | one workbook per entry in `SUPPORTED_TEMPLATES` |
+| `test_encodings_and_sources.py` | a size-encoded worksheet, and a two-data-source workbook whose first sheet is bound to the *second* source |
+| `test_dashboard.py` | an automatic and a fixed-size dashboard |
+| `test_publish_flow.py` | one workbook, taken to the publish dialog and no further |
+
+Everything that only *reads* something from this directory rather than opening a
+window belongs in `tests/unit/test_coverage_gaps.py`, which runs by default. The
+drift check over `TEMPLATE_CASES` lives there for exactly that reason: while it
+sat in `test_render_templates.py` under this package's `live` marker, the one
+test whose job is noticing a new template arriving without a live case only ran
+on the runs that were already driving Tableau.
+
 ## Running it
 
 ```bash
-uv run pytest -m live                 # everything except the publish-flow tests
-uv run pytest -m "live and not publish"
-uv run pytest -m publish -v           # the publish-flow tests (still never publish)
-uv run pytest -m live -k dashboard    # one file
+uv run pytest -m live                    # the whole tier, publish-flow tests included
+uv run pytest -m "live and not publish"  # render checks only
+uv run pytest -m publish -v              # the publish-flow tests (still never publish)
+uv run pytest -m live -k dashboard       # one file
+TABLEAU_LIVE_TESTS=1 uv run pytest tests/live   # name the directory, not the marker
 ```
 
-`TABLEAU_LIVE_TESTS=1 uv run pytest tests/live` works too, for when you want to
-name the directory instead of the marker.
+Every line above is checked: `-m live` selects 15 tests, `-m "live and not
+publish"` selects 11, `-m publish` selects 4. The publish-flow tests carry
+**both** markers, so `-m live` includes them — an earlier version of this file
+claimed the opposite.
+
+The environment-variable route needs the conftest's help, because
+`pyproject.toml` sets `addopts = "-m 'not live'"` and that filter would deselect
+the very tests you just asked for. `TABLEAU_LIVE_TESTS=1` drops it; see
+`resolve_selection` in `conftest.py`. An explicit `-m` of your own always wins
+over the variable.
 
 Add `-s` if you want the `[live]` progress lines as they happen rather than at
 the end.
@@ -40,10 +65,28 @@ machine without Tableau, or a machine without the permissions all *skip*.
 
 ## It must never run in CI
 
-A default `pytest` run **deselects** the whole tier (`tests/live/conftest.py`
-does this in `pytest_collection_modifyitems`, because `pyproject.toml` sets no
-`addopts` marker filter). Selecting it takes a deliberate `-m live` or
-`TABLEAU_LIVE_TESTS=1`.
+A default `pytest` run **deselects** the whole tier. Two mechanisms do that, and
+they cover different failures:
+
+1. **`pyproject.toml` sets `addopts = "-m 'not live'"`.** pytest's own marker
+   filter deselects everything carrying the `live` marker, wherever it lives.
+   This is what does the work on a normal day.
+2. **`pytest_collection_modifyitems` in `conftest.py`.** It covers what a marker
+   filter structurally cannot: a test added to this directory that nobody
+   marked. Such a test used to run in a bare `pytest` and launch Tableau. It is
+   marked during collection now — before pytest's filter runs — and reported, so
+   the omission is visible rather than silently patched. If there is no marker
+   filter in force at all (`addopts` removed, or `-m ""`), the same hook
+   deselects the tier itself instead.
+
+Neither is decoration. The hook was inert for a long time: it asked
+`if "live" in markexpr`, and `addopts` makes that string `"not live"`, which
+contains `live` — so it decided the tier had been requested and returned without
+acting on *every single run*.
+
+Selecting the tier takes a deliberate `-m live` or `TABLEAU_LIVE_TESTS=1`.
+`tests/unit/test_coverage_gaps.py` pins both mechanisms and audits this
+directory for unmarked modules, in the tier that actually runs by default.
 
 CI cannot run this anyway: publishing and rendering both need a visible app, a
 window server, a signed-in session and two macOS privacy permissions. There is no
@@ -88,8 +131,10 @@ successful closes — see limitation 10 in `docs/LIMITATIONS.md`.
 This cleanup is not tidiness. A session that left roughly eighteen workbooks open
 wedged Tableau to the point where it stopped accepting new documents, which looks
 exactly like a compiler bug until you count the windows. The tier also refuses to
-open more than `MAX_LIVE_WORKBOOKS` (12) in one run rather than wedge the app
-halfway through.
+open more than `MAX_LIVE_WORKBOOKS` (14) in one run rather than wedge the app
+halfway through. A full `-m live` run currently opens twelve, so that ceiling has
+to stay above twelve and comfortably below the eighteen that wedged Tableau;
+raising it further is not the fix if a run starts hitting it.
 
 If teardown reports workbooks still open, close them in Tableau by hand before the
 next run. The most likely reason is Tableau asking whether to save — this project

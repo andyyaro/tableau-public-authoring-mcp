@@ -8,7 +8,7 @@
     {
       "id": "sites",
       "type": "csv",
-      "path": "<repo>/tests/fixtures/data/ev_site_readiness.csv"
+      "path": "/absolute/path/to/your/data.csv"
     }
   ],
   "calculated_fields": [
@@ -69,7 +69,7 @@
     }
   ],
   "output": {
-    "directory": "<repo>/output",
+    "directory": "/absolute/path/to/your/output/directory",
     "package_twbx": true
   }
 }

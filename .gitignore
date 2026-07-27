@@ -7,4 +7,6 @@ tests/fixtures/binary/
 .pytest_cache/
 .ruff_cache/
 *.hyper
-hyperd.log
+hyperd*.log
+# Hyper writes its log into the process CWD; the numbered variants appear
+# when several processes run concurrently (the test suite does exactly that).

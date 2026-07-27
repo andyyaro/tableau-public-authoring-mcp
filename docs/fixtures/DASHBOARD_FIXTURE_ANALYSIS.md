@@ -1,7 +1,7 @@
 # Dashboard XML Forensics — reverse-engineering `<dashboards>` from real fixtures
 
 **Why this document exists.** The canonical reference workbook for this project
-(`EV_WORKBOOK_ANALYSIS.md`, `dashboard_count: 0`) contains no dashboards, so the
+(`REFERENCE_WORKBOOK_ANALYSIS.md`, `dashboard_count: 0`) contains no dashboards, so the
 compiler has never had a verified dashboard structure to copy. This document
 supplies one, derived from downloaded published workbooks rather than from
 memory or documentation.

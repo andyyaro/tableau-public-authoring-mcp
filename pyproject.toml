@@ -9,6 +9,14 @@ authors = [{ name = "Andy Yaro" }]
 dependencies = [
     "mcp>=1.28.0",
     "jsonschema>=4.23.0",
+    # Tableau Public refuses any workbook that is not extract-backed (Error Code
+    # 3C242D89), so compiler/extract.py materialises every CSV into a .hyper and
+    # there is no build path that does not need this. It is a runtime dependency
+    # of the server, not a test-only one; it was previously declared nowhere and
+    # arrived via a separate `uv pip install` line in the README, which made
+    # `uv sync && uv run pytest` fail on a clean checkout.
+    # Floor = the version this project has actually been verified against.
+    "tableauhyperapi>=0.0.25080",
 ]
 
 [project.scripts]
@@ -26,13 +34,23 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
+    # The live tier enumerates and screenshots Tableau's windows through
+    # CoreGraphics. Every import of it is lazy, so the unit tier runs without it
+    # and the tier itself skips when it is absent; the marker keeps a non-macOS
+    # `uv sync` resolvable, since these wheels exist only for darwin.
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The live tier drives a real GUI and must never run by accident - a bare
-# `pytest` would otherwise launch Tableau. Override with `pytest -m live`
-# (a CLI -m wins over this one).
+# `pytest` would otherwise launch Tableau. This is the FIRST of the two
+# mechanisms that stop it; the second is tests/live/conftest.py, which catches
+# what a marker filter structurally cannot (a test in tests/live/ that nobody
+# marked). Change this line and change DEFAULT_MARKEXPR there to match - a unit
+# test pins both.
+# Override with `pytest -m live` (a CLI -m wins over this one) or by setting
+# TABLEAU_LIVE_TESTS=1.
 addopts = "-m 'not live'"
 markers = [
     "live: requires Tableau Public installed (not for CI)",

@@ -1,7 +1,22 @@
 # Authoring Specification (v0.1)
 
-Machine-readable contract: `schemas/workbook-spec-v0.1.json`.
-Unknown properties are rejected everywhere, so typos fail loudly.
+Machine-readable contract: `schemas/workbook-spec-v0.1.json`, which defines the
+*shape* of a spec.
+
+**That file is generated, not hand-written.** It is the output of
+`models.spec.spec_json_schema()`, built from the same constants and dataclasses
+`parse_spec` enforces, and `tests/unit/test_schema_contract.py` fails if the two
+diverge — including if the schema is ever made *stricter* than the server, which
+it silently was for a long time (it capped lengths and counts nobody enforces,
+and omitted `fit` entirely while `additionalProperties: false` would have
+rejected it). The same generated schema is what the MCP `build_workbook` and
+`validate_workbook_spec` tools advertise as their input schema, so the contract a
+caller is shown is the contract that runs.
+
+Everything a schema cannot express — cross-references, field existence, encoding
+compatibility, template shelf rules — is checked in `models/spec.py`. Unknown
+properties are rejected at every level, so typos fail loudly rather than being
+silently dropped.
 
 ## Top level
 
@@ -9,10 +24,10 @@ Unknown properties are rejected everywhere, so typos fail loudly.
 |---|---|---|
 | `spec_version` | no | must be `"0.1"` |
 | `workbook` | yes | `{ name, description? }` |
-| `data_sources` | yes | 1-20 CSV sources |
+| `data_sources` | yes | one or more CSV sources |
 | `calculated_fields` | no | Tableau formula syntax |
-| `worksheets` | yes | 1-50 |
-| `dashboards` | no | must be empty (not supported in v0.1) |
+| `worksheets` | yes | one or more |
+| `dashboards` | no | supported and verified; see `dashboards[]` |
 | `output` | yes | `{ directory, package_twbx? }` |
 
 ## `data_sources[]`
@@ -43,14 +58,41 @@ existing column. Formulas are escaped by the XML serializer, never spliced.
 
 | Key | Notes |
 |---|---|
-| `name` | unique within the workbook |
-| `template` | `bar`, `line`, `text_table`, `heatmap`, `scatter`, `circle` |
+| `name` | unique within the workbook, and distinct from every dashboard name |
+| `template` | `bar`, `line`, `text_table`, `heatmap`, `scatter`, `circle`, `map` |
 | `data_source` | must match a declared id |
 | `rows`, `columns` | arrays of encoding refs |
 | `color`, `size`, `label` | single encoding ref |
+| `detail` | array of encoding refs -> Tableau's **Detail** shelf, compiled to `<lod>` |
 | `tooltips` | array of encoding refs |
-| `filters` | array of field names -> interactive filter cards |
+| `filters` | array of **dimension** field names -> interactive filter cards. A measure is rejected: only a categorical filter can be emitted, and over a measure that is a picker listing every distinct number. Band it with a `calculated_field` and filter that. |
 | `title`, `subtitle` | rendered above the viz |
+| `fit` | `standard`, `fit_width`, `fit_height`, `entire_view` |
+| `latitude`, `longitude` | `map` only; encoding refs naming the coordinate columns |
+
+**`detail`** raises the level of detail. Each dimension placed there adds a
+grouping key, which is how a sheet draws one mark per entity instead of one per
+colour value: a scatter with `Status` on `color` alone draws 3 marks, and adding
+`Site Name` to `detail` draws 12. A field may appear on `detail` at most once —
+a second copy cannot subdivide the marks further and is always a mistake. Unlike
+`tooltips`, dimensions on `detail` keep their `None` derivation rather than being
+promoted to `Attribute`, because raising the level of detail is exactly what
+Detail is for.
+
+**`fit`** is how the viz fills its canvas. Omit it and each template gets the
+default Tableau's own author chose for that shape: `entire_view` for
+`text_table`, `heatmap` and `map`, `fit_width` for everything else. Setting
+`standard` explicitly gives Tableau's Standard fit, which draws a small viz
+tucked into the top-left corner.
+
+**`latitude` / `longitude`** are the `map` template's axes, not encodings: the
+compiler puts latitude on rows and longitude on columns itself, because that
+order is a rule of Tableau's projection rather than a caller's choice. Both are
+inferred when omitted, from columns whose names identify them as coordinates —
+supply them explicitly only when inference is ambiguous, which it is when a data
+source has more than one candidate column (that is an error, not a guess).
+Coordinates are always **averaged**: asking for `Sum` is rejected, because
+summing latitudes places every mark at one meaningless point.
 
 ### Encoding reference
 
@@ -74,13 +116,54 @@ the sheet renders blank with a red pill. This is applied for you.
 | `bar`, `line`, `heatmap`, `scatter`, `circle` | rows **and** columns |
 | `text_table` | rows |
 | `scatter` | aggregated measures on both shelves |
+| `map` | **neither** rows nor columns — its axes are its coordinates. Needs at least one dimension on `detail`, `color` or `label`, or every row averages into a single point. `rows`/`columns` are not offered as a second pair of axes. |
+
+`latitude` and `longitude` are rejected on every template except `map`.
+
+## `dashboards[]`
+
+```json
+{ "name": "Overview", "title": "EV Charging Overview", "direction": "horizontal",
+  "sizing_mode": "fixed", "width": 1200, "height": 800,
+  "worksheets": ["Readiness by Site", { "worksheet": "Chargers", "show_title": false }] }
+```
+
+| Key | Notes |
+|---|---|
+| `name` | required; unique, and must not collide with a worksheet name — both are registered in `<windows>` by name |
+| `title` | optional, 1-300 chars |
+| `direction` | `vertical` (default) or `horizontal` |
+| `sizing_mode` | `fixed` (default) or `automatic` |
+| `width`, `height` | pixels, 100-10000, default 1200x800. **Rejected** when `sizing_mode` is `automatic`, which has no declared canvas at all — accepting a size there would silently discard it |
+| `worksheets` | required, up to 20 zones. Each is a worksheet name, or `{ worksheet, show_title }` |
+
+Scope is deliberately the smallest thing that is verified: worksheets tiled in
+**one** horizontal or vertical container, plus an optional title. A worksheet may
+appear at most once per dashboard. Filter cards, colour legends, highlighters,
+parameter controls, images, floating zones, device layouts and dashboard actions
+are understood but **not generated** — see
+`docs/architecture/CAPABILITY_BOUNDARY.md`.
+
+A zone references its worksheet by bare name; there is no id behind it, so an
+unresolvable name would produce a file that loads without complaint and draws an
+empty box. That is why the reference is checked in layer 1 *and* again against
+the generated file in layer 2 (`validation.structure.unresolved_zone_worksheet`).
 
 ## Validation
 
 `validate_workbook_spec` runs everything below without writing files:
 
-1. structural (JSON Schema, unknown keys rejected)
+1. structural — the spec's shape, against the generated JSON Schema;
+   unknown keys rejected at every level
 2. path safety (absolute, no traversal, exists, size caps)
-3. cross-references (every field exists in its data source)
-4. encoding compatibility (e.g. `size` needs a measure)
+3. cross-references (every field exists in its data source; every dashboard zone
+   names a real worksheet)
+4. encoding compatibility (e.g. `size` needs a measure; a map coordinate must be
+   numeric)
 5. template shelf requirements
+
+Steps 2-5 are semantic and live in `models/spec.py`, because a JSON Schema cannot
+express them: whether a field name resolves depends on the CSV on disk, not on
+the document. `build_workbook` runs all of it and then a second, independent
+layer over the *generated* file (`validation/structure.py`) — see
+`docs/VALIDATION_REPORT.md` for what each layer caught.

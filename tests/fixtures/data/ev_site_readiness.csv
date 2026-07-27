@@ -1,13 +1,13 @@
 Site Name,City,State,Charger Count,Readiness Score,Estimated Cost,Annual Sessions,Latitude,Longitude,Status,Assessment Date
-Site 01 Springfield,Springfield,IL,5,55.6,229451,43015,33.7777,-89.9811,Ready,2026-06-09
-Site 02 Aurora,Aurora,CO,4,58.4,86750,34190,46.8524,-73.9967,Needs Review,2026-05-02
-Site 03 Riverton,Riverton,WY,18,32.9,134486,5040,32.7437,-113.4625,Ready,2026-07-23
-Site 04 Fairview,Fairview,OR,5,88.1,356403,5461,32.8534,-85.5289,Ready,2026-02-14
-Site 05 Clayton,Clayton,MO,3,29.3,353202,48405,39.5607,-96.8105,Needs Review,2026-07-28
-Site 06 Georgetown,Georgetown,TX,3,30.3,193318,22318,30.7918,-118.9063,Ready,2026-01-28
-Site 07 Ashland,Ashland,KY,23,28.3,318456,39724,37.8092,-98.2587,Needs Review,2026-06-11
-Site 08 Bristol,Bristol,VA,22,57.1,249202,7376,32.061,-95.0669,Blocked,2026-01-01
-Site 09 Dover,Dover,DE,10,60.9,221053,29606,39.9778,-104.6437,Needs Review,2026-03-07
-Site 10 Salem,Salem,NH,16,36.9,262414,38274,33.2779,-80.1945,Blocked,2026-01-28
-Site 11 Hudson,Hudson,NY,13,60.8,359526,14195,43.0584,-77.8387,Ready,2026-02-04
-Site 12 Marion,Marion,OH,22,46.6,187364,53783,32.3364,-77.032,Needs Review,2026-07-19
+Site 01 Springfield,Springfield,IL,5,55.6,229451,43015,39.7817,-89.6501,Ready,2026-06-09
+Site 02 Aurora,Aurora,CO,4,58.4,86750,34190,39.7294,-104.8319,Needs Review,2026-05-02
+Site 03 Riverton,Riverton,WY,18,32.9,134486,5040,43.0247,-108.3801,Ready,2026-07-23
+Site 04 Fairview,Fairview,OR,5,88.1,356403,5461,45.5387,-122.4362,Ready,2026-02-14
+Site 05 Clayton,Clayton,MO,3,29.3,353202,48405,38.6426,-90.3237,Needs Review,2026-07-28
+Site 06 Georgetown,Georgetown,TX,3,30.3,193318,22318,30.6333,-97.6772,Ready,2026-01-28
+Site 07 Ashland,Ashland,KY,23,28.3,318456,39724,38.4784,-82.6379,Needs Review,2026-06-11
+Site 08 Bristol,Bristol,VA,22,57.1,249202,7376,36.596,-82.1885,Blocked,2026-01-01
+Site 09 Dover,Dover,DE,10,60.9,221053,29606,39.1582,-75.5244,Needs Review,2026-03-07
+Site 10 Salem,Salem,NH,16,36.9,262414,38274,42.7884,-71.2009,Blocked,2026-01-28
+Site 11 Hudson,Hudson,NY,13,60.8,359526,14195,42.2528,-73.791,Ready,2026-02-04
+Site 12 Marion,Marion,OH,22,46.6,187364,53783,40.5867,-83.1285,Needs Review,2026-07-19

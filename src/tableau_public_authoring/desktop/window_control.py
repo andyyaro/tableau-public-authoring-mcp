@@ -79,16 +79,15 @@ DOC_TITLE_PREFIX = "Tableau Public - "
 #   * a window minimized into the Dock keeps its title and owner but shrinks to a
 #     Dock *tile* of roughly 140x161..140x190 at the Dock's x (16 here), and is
 #     still reported as on-screen;
-#   * a window minimized while Tableau is hidden/behind is parked off-screen at
-#     roughly (-234, 367) with bounds 218x161 and disappears from the on-screen
-#     list altogether.
+#   * bounds of 218x161 at (-234, 367), absent from the on-screen list, are NOT a
+#     minimized window. That is the husk of a CLOSED one — see STALE WINDOWS
+#     above. This comment previously said the opposite and cost two bugs.
 # No public API exposes "is minimized" for another process's windows, so this is a
-# heuristic, and it is wrong in two known ways:
-#   * a window on another Space is absent from the on-screen list and is reported
-#     here as minimized (it is unreachable by clicking either way, so the
-#     resulting advice — reopen it via `open -a` — is still correct);
+# heuristic, and it is wrong in one known way:
 #   * a genuinely tiny restored window would be misreported, which Tableau's own
 #     minimum document size (far above 320x320) makes unreachable in practice.
+# Coordinates are deliberately NOT part of the test: negative x/y is normal on a
+# multi-monitor layout with a display left of or above the primary.
 MINIMIZED_TILE_MAX_EDGE = 320
 UNUSABLE_EDGE = 10
 
@@ -199,10 +198,22 @@ def _stem_from_title(title: str) -> str | None:
 
 
 def _looks_minimized(x: float, y: float, width: float, height: float, on_screen: bool) -> bool:
-    """See the module-level notes on MINIMIZED_TILE_MAX_EDGE for the evidence."""
+    """Size is the signal. See MINIMIZED_TILE_MAX_EDGE for the measurements.
+
+    Position deliberately plays no part. An earlier version also treated any
+    negative x or y as minimized, which is wrong on any multi-monitor layout: a
+    display arranged to the left of (or above) the primary has negative global
+    coordinates, so a perfectly normal 1291x949 Tableau window sitting there was
+    classified as minimized. ``frontmost_document`` skips minimized windows, so
+    every close on such a layout aborted with "frontmost document is None" and
+    every raise advised reopening the file. It failed closed, but it failed
+    always.
+
+    An off-screen window is reported as minimized only for backwards
+    compatibility of this flag; ``WindowInfo.is_stale`` is the signal that
+    actually matters there, and callers filter on it.
+    """
     if not on_screen:
-        return True
-    if x < 0 or y < 0:
         return True
     return width <= MINIMIZED_TILE_MAX_EDGE and height <= MINIMIZED_TILE_MAX_EDGE
 
@@ -213,11 +224,15 @@ def _looks_minimized(x: float, y: float, width: float, height: float, on_screen:
 def quartz_windows() -> list[dict]:
     """Default enumerator: Tableau's windows straight from the window server.
 
-    Both CoreGraphics lists are queried because neither is sufficient alone: the
-    on-screen list is ordered front-to-back but omits minimized windows, and the
-    all-windows list includes them but carries no usable ordering. On-screen
-    windows are returned first, in their front-to-back order, so callers can treat
-    the first entry as the frontmost.
+    Both CoreGraphics lists are queried, but they mean different things. The
+    on-screen list is the set of windows that **exist**, ordered front-to-back;
+    minimized documents appear in it as their Dock tiles. The all-windows list
+    adds entries the window server has not yet reaped for windows that are
+    already **destroyed**, which is why everything it contributes is flagged
+    ``on_screen=False`` and treated as stale (see STALE WINDOWS above). It is
+    queried only so that callers can report husks as diagnostics, never to decide
+    what to click or close. On-screen windows are returned first, in front-to-back
+    order, so callers can treat the first entry as the frontmost.
 
     Untitled windows are dropped. Tableau litters the window server with dozens of
     untitled 1512x33 and 500x500 helper surfaces; keeping them would add noise to
@@ -380,6 +395,36 @@ def activate_app() -> None:
     osascript(f'tell application "{PROCESS_NAME}" to activate')
 
 
+def frontmost_app_name(*, runner: Callable[[str], str] | None = None) -> str | None:
+    """Name of the application that currently owns keyboard focus, or None."""
+    try:
+        name = (runner or osascript)(
+            'tell application "System Events" to get name of first application process '
+            "whose frontmost is true"
+        )
+    except DesktopError:
+        return None
+    return name.strip() or None
+
+
+def tableau_is_active(*, runner: Callable[[str], str] | None = None) -> bool:
+    """True when Tableau owns keyboard focus, so a key event will reach it.
+
+    Every keystroke this module sends goes through ``CGEventPost(kCGHIDEventTap,
+    …)``, which is delivered to **whatever application is active**, not to a
+    window we name. Nothing else here checks that.
+
+    That gap is not theoretical. This server is normally driven from a terminal
+    or editor while Tableau sits in the background, and
+    :func:`frontmost_document` only ranks Tableau's *own* windows — it returns a
+    confident answer even when Tableau is not the active app at all. Command-W
+    aimed at a workbook would then close the front tab of whatever the user was
+    actually looking at.
+    """
+    name = frontmost_app_name(runner=runner)
+    return name is not None and PROCESS_NAME.lower() in name.lower()
+
+
 def open_with_tableau(path: Path) -> None:
     """``open -a <Tableau> <file>`` — never shell=True, arguments always a list."""
     app = find_app()
@@ -404,7 +449,7 @@ def click_point(window: WindowInfo) -> tuple[int, int] | None:
     """
     if window.width < UNUSABLE_EDGE or window.height < UNUSABLE_EDGE:
         return None
-    if not window.on_screen or window.x < 0 or window.y < 0:
+    if not window.on_screen:
         return None
     if window.is_minimized:
         # An on-screen minimized window is its Dock tile; clicking the tile centre
@@ -430,18 +475,27 @@ def unminimize_and_raise(
 ) -> tuple[bool, str]:
     """Restore and raise one workbook window. Returns ``(ok, message)``.
 
-    Two paths, in order of demonstrated reliability:
+    Two paths, in this order:
 
-    1. **Re-open the file** (used whenever ``file_path`` is known). Verified this
-       session: ``open -a "Tableau Public" <file>`` un-minimizes the existing
-       window and brings it forward *at full size*, but only when the app has been
-       activated first — without the ``activate`` the command is a no-op for an
-       already-open document. Tableau focuses the existing window rather than
+    1. **A real HID click** on the window, at a point computed from its live
+       bounds (Dock-tile centre when minimized, title bar when restored).
+    2. **Re-open the file** (only when there is nothing clickable and
+       ``file_path`` is known). ``open -a "Tableau Public" <file>`` un-minimizes
+       the existing window and brings it forward at full size, but only if the app
+       was activated first; Tableau focuses the existing window rather than
        loading a second copy.
-    2. **A real HID click** on the window, at a point computed from its live
-       bounds (Dock-tile centre when minimized, title bar when restored). This is
-       the documented brittle fallback and is used only when no file path is
-       available.
+
+    THE ORDER MATTERS, AND IT IS THE OPPOSITE OF WHAT IT LOOKS LIKE. ``open -a``
+    raises the window more reliably, so it was tried first — but the window it
+    raises is not necessarily the document Tableau considers *active*. The window
+    server reports the target as frontmost while Tableau's own active-document
+    state still points elsewhere, so a Command-W that passes every guard here
+    closes a different workbook. Reproduced deliberately: with ``CloseTestA``
+    minimized behind ``CloseTestB``, closing A via ``open -a`` failed twice over
+    21s while consuming two blank ``Book`` windows — Command-W was closing those.
+    The same close via the Dock-tile click succeeded first time. Clicking the tile
+    activates the document inside Tableau; re-opening the file only rearranges
+    windows.
 
     AX ``AXRaise`` is not attempted: Tableau exposes no windows to Accessibility.
     """
@@ -458,7 +512,16 @@ def unminimize_and_raise(
     if already is not None and already.id == target.id and not target.is_minimized:
         return True, f"{target.title!r} is already the frontmost document window"
 
-    if file_path is not None:
+    point = click_point(target)
+    if point is not None:
+        try:
+            (activator or activate_app)()
+            sleep(0.6)
+            (clicker or real_click)(*point)
+        except DesktopError as exc:
+            return False, f"could not click {target.title!r} to raise it: {exc}"
+        how = f"activate + HID click at {point} (from live bounds)"
+    elif file_path is not None:
         path = Path(file_path)
         if not path.exists():
             return False, f"file_path does not exist: {path}"
@@ -470,21 +533,11 @@ def unminimize_and_raise(
             return False, f"could not re-open {path.name} to raise its window: {exc}"
         how = f"activate + open -a {path.name}"
     else:
-        point = click_point(target)
-        if point is None:
-            return False, (
-                f"{target.title!r} is minimized off-screen (bounds "
-                f"{target.width:.0f}x{target.height:.0f} at {target.x:.0f},{target.y:.0f}) and "
-                f"offers no on-screen tile to click. Pass file_path=<path to the .twbx> so it "
-                f"can be restored with `open -a`, which is the reliable path."
-            )
-        try:
-            (activator or activate_app)()
-            sleep(0.6)
-            (clicker or real_click)(*point)
-        except DesktopError as exc:
-            return False, f"could not raise {target.title!r}: {exc}"
-        how = f"activate + HID click at {point} (from live bounds)"
+        return False, (
+            f"{target.title!r} offers no on-screen tile to click (bounds "
+            f"{target.width:.0f}x{target.height:.0f} at {target.x:.0f},{target.y:.0f}) and no "
+            f"file_path was given. Pass file_path=<path to the .twbx> so it can be re-opened."
+        )
 
     attempts = max(1, int(timeout / poll))
     for _ in range(attempts):
@@ -510,9 +563,16 @@ def looks_like_save_prompt(window: WindowInfo) -> bool:
 
 
 def detect_save_prompt(*, enumerator: Enumerator | None = None) -> WindowInfo | None:
-    """A visible window that looks like a "save changes?" question, if any."""
+    """A visible window that looks like a "save changes?" question, if any.
+
+    Husks are skipped. Dialogs leave them behind exactly as documents do — the
+    sign-in window leaves a ~59x112 one, which is what once made publishing
+    believe sign-in was permanently required. A stale save prompt would be worse
+    here: it would block EVERY close from then on with "Tableau is already
+    showing a save prompt", and make every successful close report BAILED OUT.
+    """
     for w in classify_windows(enumerator=enumerator):
-        if not w.is_document and looks_like_save_prompt(w):
+        if not w.is_document and not w.is_stale and looks_like_save_prompt(w):
             return w
     return None
 
@@ -532,8 +592,11 @@ def close_document(
     opener: Opener | None = None,
     raiser: Raiser | None = None,
     sleeper: Sleeper | None = None,
+    app_checker: Callable[[], bool] | None = None,
+    app_namer: Callable[[], str | None] | None = None,
     settle: float = 1.5,
-    close_timeout: float = 12.0,
+    close_timeout: float = 25.0,
+    resend_on_timeout: bool = True,
 ) -> tuple[bool, str]:
     """Close exactly one workbook window. Returns ``(closed, message)``.
 
@@ -630,6 +693,22 @@ def close_document(
             f"{target.title!r}. Command-W would close the wrong workbook."
         )
 
+    # Command-W goes to the ACTIVE APPLICATION, not to a window we name. Every
+    # check above only ranks Tableau's own windows, so all of them pass happily
+    # while the user is in a browser — and the keystroke closes their tab.
+    is_active = app_checker or tableau_is_active
+    if not is_active():
+        (activator or activate_app)()
+        sleep(0.6)
+        if not is_active():
+            return False, (
+                f"refusing to close {target.title!r}: Tableau could not be made the active "
+                f"application (frontmost app is {(app_namer or frontmost_app_name)()!r}). "
+                f"Command-W is "
+                f"delivered to whatever app has keyboard focus, so it would close a window "
+                f"there instead."
+            )
+
     before = {w.id for w in classify_windows(enumerator=enumerator)}
     try:
         (key_sender or post_command_key)("w")
@@ -672,9 +751,33 @@ def close_document(
             f"That is very likely an unsaved-changes prompt; this server will not answer it. "
             f"Resolve the dialog in Tableau, then re-run."
         )
+    # Tableau drops the occasional keystroke when it is busy -- with a dozen
+    # documents loaded, one workbook per run reliably survived the first
+    # Command-W while its window sat restored and frontmost, no save prompt and no
+    # dialog. Resending once is safe: every guard above still holds, the save
+    # prompt is re-checked each poll, and the window is re-identified by title.
+    if resend_on_timeout:
+        return close_document(
+            stem,
+            file_path=file_path,
+            enumerator=enumerator,
+            clicker=clicker,
+            key_sender=key_sender,
+            activator=activator,
+            opener=opener,
+            raiser=raiser,
+            sleeper=sleeper,
+            app_checker=app_checker,
+            app_namer=app_namer,
+            settle=settle,
+            close_timeout=close_timeout,
+            resend_on_timeout=False,
+        )
+
     return False, (
-        f"Command-W was sent but {target.title!r} was still open {waited:.0f}s later. Nothing "
-        f"was forced. Close it in Tableau, or check that Tableau has Accessibility permission."
+        f"Command-W was sent twice but {target.title!r} was still open {waited:.0f}s after "
+        f"the second attempt. Nothing was forced. Close it in Tableau, or check that "
+        f"Tableau has Accessibility permission."
     )
 
 
@@ -690,6 +793,8 @@ def close_all_generated(
     opener: Opener | None = None,
     raiser: Raiser | None = None,
     sleeper: Sleeper | None = None,
+    app_checker: Callable[[], bool] | None = None,
+    app_namer: Callable[[], str | None] | None = None,
 ) -> dict:
     """Close only the throwaway workbooks whose stem starts with a given prefix.
 
@@ -791,11 +896,23 @@ def close_all_generated(
             opener=opener,
             raiser=raiser,
             sleeper=sleeper,
+            app_checker=app_checker,
         )
         if ok:
             result["closed"].append({"stem": stem, "message": message})
-        else:
-            result["failed"].append({"stem": stem, "reason": message})
+            continue
+        # Judge by OUTCOME, not by the return value. close_document refuses when a
+        # stem resolves only to a husk ("already closed, nothing to do") -- which
+        # is the goal state, not a failure, and reporting it under COULD NOT CLOSE
+        # sends someone hunting for a window that does not exist. Anything with no
+        # live window left is done, however it got there.
+        if not any(
+            normalise_stem(d.workbook_stem or "") == key
+            for d in document_windows(enumerator=enumerator)
+        ):
+            result["already_closed"].append(stem)
+            continue
+        result["failed"].append({"stem": stem, "reason": message})
     result["notes"].append(
         f"closed {len(result['closed'])} of {len(seen)} matched workbook(s); "
         f"{len(result['failed'])} refused or bailed out."

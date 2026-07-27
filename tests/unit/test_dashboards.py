@@ -392,10 +392,17 @@ def test_multiple_dashboards(csv_file, out_dir):
 
 
 def test_dashboard_build_is_byte_deterministic(csv_file, out_dir):
-    """Same spec -> byte-identical .twb, including every zone id."""
+    """Same spec -> byte-identical .twb, including every zone id.
+
+    The bytes MUST be snapshotted before the second build. Both builds use the
+    same workbook name and output directory, so they write to the same path --
+    an earlier version compared the file to itself and could not fail even if
+    every zone id were random.
+    """
     a = build_workbook(two_sheet_spec(csv_file, out_dir, title="Site Readiness"))
+    first = a.twb_path.read_bytes()
     b = build_workbook(two_sheet_spec(csv_file, out_dir, title="Site Readiness"))
-    assert a.twb_path.read_bytes() == b.twb_path.read_bytes()
+    assert first == b.twb_path.read_bytes()
 
 
 # --- layer 2 validation catches what layer 1 cannot -------------------------

@@ -222,11 +222,22 @@ def test_twbx_hash_is_not_guaranteed_stable(csv_file, out_dir):
     docs/LIMITATIONS.md rather than papered over.
     """
     a = build_workbook(make_spec(csv_file, out_dir))
+    # Snapshot before the second build: both write to the same path, so comparing
+    # the two BuildResults afterwards would compare the file to itself.
+    first_twb = a.twb_path.read_bytes()
+    first_sha = a.sha256
     b = build_workbook(make_spec(csv_file, out_dir))
-    assert a.twb_path.read_bytes() == b.twb_path.read_bytes()
-    if a.sha256 == b.sha256:
-        pytest.skip("Hyper produced identical bytes on this run; determinism is not guaranteed")
-    assert a.sha256 != b.sha256
+
+    # The .twb IS stable. That half is a guarantee and is asserted as one.
+    assert first_twb == b.twb_path.read_bytes()
+
+    # The .twbx is not, because Hyper writes non-deterministic internal state.
+    # This is recorded, not asserted: an equal digest would mean Hyper happened to
+    # be stable on this run, which is allowed. Asserting inequality would make the
+    # suite fail on the *better* outcome. What must never happen is code or docs
+    # claiming the package digest is reproducible -- see the twbx.py docstring.
+    if first_sha == b.sha256:
+        pytest.skip("Hyper produced identical bytes on this run; that is permitted, not promised")
 
 
 def test_calculated_field_appears_in_output(csv_file, out_dir):

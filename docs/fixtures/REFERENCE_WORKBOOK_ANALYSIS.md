@@ -1,10 +1,10 @@
-# Reference Workbook Forensics — Quarterly Sales Review
+# Reference Workbook Forensics
 
 **Source:** the user's own published workbook (correct fixture: it represents the
 kind of workbook this MCP will author most often).
-**Canonical URL:** <https://public.tableau.com/app/profile/demo.analyst/viz/Quarterly_Sales_Review/Matrix-ActionDecisionQuadrant>
-**Downloaded:** 2026-07-26 · **Hash + counts:** `EV_WORKBOOK_MANIFEST.json`
-**Element classification:** `EV_WORKBOOK_ELEMENT_MAP.csv`
+**Canonical URL:** <https://public.tableau.com/app/profile/<your-profile>/viz/the reference workbook/Matrix-ActionDecisionQuadrant>
+**Downloaded:** 2026-07-26 · **Hash + counts:** `REFERENCE_WORKBOOK_MANIFEST.json`
+**Element classification:** `REFERENCE_WORKBOOK_ELEMENT_MAP.csv`
 
 The original `.twbx` is **not committed** (see `.gitignore`); its SHA-256 is recorded
 so mutation is detectable.

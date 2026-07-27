@@ -5,23 +5,23 @@ built by string concatenation or substitution, which is what makes the compiler
 immune to XML injection through user-supplied names and formulas (T1).
 
 Node structures were derived from a real workbook produced by the installed
-Tableau Public build (see docs/fixtures/EV_WORKBOOK_ANALYSIS.md). Version
+Tableau Public build (see docs/fixtures/REFERENCE_WORKBOOK_ANALYSIS.md). Version
 metadata is pinned to that build.
 
-**The ``<dashboards>`` section is EXPERIMENTAL / UNVERIFIED.** That reference
-workbook contains no dashboards, so dashboard XML was instead reverse-engineered
-from published workbooks at document version 18.1 written by Tableau builds
-2019.4.3-2023.1.0 (docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md). No generated
-dashboard has been opened in Tableau. See :meth:`WorkbookCompiler._build_dashboard`.
+The ``<dashboards>`` section was reverse-engineered from published workbooks at
+document version 18.1 written by Tableau builds 2019.4.3-2023.1.0
+(docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md), because the reference workbook
+contains no dashboards. It has since been **verified**: generated dashboards open
+in Tableau Public 2026.2.0 with their title, worksheets and fixed sizing intact,
+and ``tests/live/test_dashboard.py`` re-checks it.
 """
 
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
 from ..models.spec import Dashboard, EncodingRef, WorkbookSpec, Worksheet
-from .fields import Field
+from .fields import Field, bracket
 from .ids import connection_name, datasource_name
 
 # Pinned from the verified fixture: build 2026.2.0 (20262.26.0603.1643), doc 18.1
@@ -40,7 +40,16 @@ MARK_CLASS = {
     "heatmap": "Square",
     "scatter": "Circle",
     "circle": "Circle",
+    # A symbol map. The reference workbook's map sheets use "Shape" because they
+    # encode a shape field; "Circle" is Tableau's own default for a plain symbol
+    # map and needs no shape palette.
+    "map": "Circle",
 }
+
+# Tableau's built-in background map service. Without a <mapsources> element the
+# sheet still plots the coordinates, but on a blank white canvas with no
+# coastline, which reads as a broken map rather than a map.
+MAP_SOURCE = "Tableau"
 
 # Canvas fit. Stored as <windows><window><viewpoint><zoom type=...>, AFTER <cards>.
 # Absent  == Tableau's "Standard" fit, which renders a small viz in the top-left
@@ -61,6 +70,8 @@ _DEFAULT_FIT = {
     "circle": "fit_width",
     "heatmap": "entire_view",
     "text_table": "entire_view",
+    # A map that does not fill its canvas is a postage stamp of coastline.
+    "map": "entire_view",
 }
 
 
@@ -173,7 +184,35 @@ def _instance_name(field: Field, aggregation: str) -> str:
     itype = _instance_type(field, aggregation)
     suffix = _TYPE_SUFFIX[itype]
     base = field.calc_name if field.is_calculated and field.calc_name else field.name
-    return f"[{prefix}:{base}:{suffix}]"
+    # The whole instance name is one identifier, so the ']' escape applies to the
+    # composed string, not to `base` alone.
+    return bracket(f"{prefix}:{base}:{suffix}")
+
+
+def _column_attrs(f: Field) -> dict[str, str]:
+    """Attributes for a <column> declaration, in both the data source and a view.
+
+    A geographic column carries two extras, copied from a published workbook that
+    renders a real map:
+        <column aggregation="Avg" datatype="real" name="[Latitude]" role="measure"
+                semantic-role="[Geographical].[Latitude]" type="quantitative" />
+    The semantic-role is what makes Tableau treat the number as a coordinate at
+    all; without it the field is an ordinary measure and the sheet draws a scatter
+    plot with no basemap. The aggregation override matters just as much: Tableau's
+    default is Sum, and a summed latitude puts every mark at one nonsense point.
+    """
+    attrs = {
+        "datatype": f.datatype,
+        "name": f.reference_name,
+        "role": f.role,
+        "type": f.type,
+    }
+    if f.semantic_role:
+        attrs["semantic-role"] = f.semantic_role
+        attrs["aggregation"] = f.default_aggregation
+    if f.is_calculated:
+        attrs["caption"] = f.name
+    return attrs
 
 
 def _qualified(ds_name: str, instance: str) -> str:
@@ -194,12 +233,22 @@ class WorkbookCompiler:
         }
 
     # ------------------------------------------------------------------ data
-    def _build_datasource(self, ds_id: str, _unused: str = "") -> ET.Element:
+    def _build_datasource(self, ds_id: str, data_dir_ref: str) -> ET.Element:
         ds = self.spec.data_source(ds_id)
-        # Each data source owns its own Data/<id>/ directory inside the package.
-        from ..packaging.twbx import data_dir_for
-
-        data_dir_ref = data_dir_for(ds_id)
+        # Tableau resolves both paths emitted below RELATIVE TO THE WORKBOOK FILE:
+        # the archive root inside a .twbx, the containing directory for a bare
+        # .twb. `data_dir_ref` is the root the build pipeline has actually
+        # materialised; each data source owns a subdirectory under it so two
+        # sources can never collide on a file name.
+        #
+        # This parameter used to be named `_unused` and was ignored: the method
+        # recomputed `data_dir_for(ds_id)` and so hardcoded the .twbx-internal
+        # layout into every file it wrote. A bare .twb therefore pointed at a
+        # `Data/<id>/` directory that only exists inside the package — verified on
+        # a real artifact (output/TplLine.twb says directory="Data/sites" while
+        # output/Data/ does not exist), so a standalone .twb could not find its
+        # data at all.
+        data_dir = f"{data_dir_ref}/{ds_id}"
         ds_name = self._ds_names[ds_id]
         conn_name = self._conn_names[ds_id]
         csv_file = ds.path.name
@@ -218,7 +267,7 @@ class WorkbookCompiler:
             "connection",
             {
                 "class": "textscan",
-                "directory": data_dir_ref,
+                "directory": data_dir,
                 "filename": csv_file,
                 "password": "",
                 "server": "",
@@ -282,15 +331,7 @@ class WorkbookCompiler:
 
         # explicit column declarations (roles, and calculated-field formulas)
         for f in ds.fields:
-            attrs = {
-                "datatype": f.datatype,
-                "name": f.reference_name,
-                "role": f.role,
-                "type": f.type,
-            }
-            if f.is_calculated:
-                attrs["caption"] = f.name
-            col = ET.SubElement(node, "column", attrs)
+            col = ET.SubElement(node, "column", _column_attrs(f))
             if f.is_calculated and f.formula:
                 # ElementTree escapes the formula automatically (T1).
                 ET.SubElement(col, "calculation", {"class": "tableau", "formula": f.formula})
@@ -314,7 +355,7 @@ class WorkbookCompiler:
                 "access_mode": "readonly",
                 "author-locale": "en_US",
                 "class": "hyper",
-                "dbname": f"{data_dir_ref}/{ds.hyper_name}",
+                "dbname": f"{data_dir}/{ds.hyper_name}",
                 "default-settings": "hyper",
                 "schema": "Extract",
                 "sslmode": "",
@@ -390,6 +431,12 @@ class WorkbookCompiler:
         dss = ET.SubElement(view, "datasources")
         ET.SubElement(dss, "datasource", {"caption": ds.id, "name": ds_name})
 
+        # <mapsources> sits between <datasources> and <datasource-dependencies>.
+        # Verified against a published map sheet (docs/fixtures/MAP_FIXTURE_ANALYSIS.md).
+        if ws.template == "map":
+            msrc = ET.SubElement(view, "mapsources")
+            ET.SubElement(msrc, "mapsource", {"name": MAP_SOURCE})
+
         deps = ET.SubElement(view, "datasource-dependencies", {"datasource": ds_name})
 
         # Collect every (field, aggregation) pair this sheet references.
@@ -406,8 +453,16 @@ class WorkbookCompiler:
                 used.append((fld, ref.aggregation))
             return _qualified(ds_name, inst)
 
-        row_refs = [use(r) for r in ws.rows]
-        col_refs = [use(c) for c in ws.columns]
+        # A map's axes ARE its coordinates: latitude on rows, longitude on cols.
+        # That assignment is fixed by the projection, not a caller preference —
+        # swapping them plots the transpose of the world. parse_spec guarantees
+        # both are present and averaged for this template.
+        if ws.template == "map":
+            row_refs = [use(ws.latitude)]
+            col_refs = [use(ws.longitude)]
+        else:
+            row_refs = [use(r) for r in ws.rows]
+            col_refs = [use(c) for c in ws.columns]
         color_ref = use(ws.color)
         size_ref = use(ws.size)
         label_ref = use(ws.label)
@@ -433,6 +488,42 @@ class WorkbookCompiler:
             return t
 
         tooltip_refs = [use(_tooltip_ref(t)) for t in ws.tooltips]
+
+        # Every filter this compiler emits is categorical: class="categorical"
+        # over a `level-members` groupfilter, plus a checkdropdown card. That is
+        # the ONE filter shape verified against a workbook Tableau actually
+        # opened, and it is only meaningful over discrete values.
+        #
+        # A measure filter used to reach this code and compile to a categorical
+        # filter over a QUANTITATIVE instance:
+        #   <filter class="categorical" column="[federated.…].[none:Value:qk]">
+        # Tableau loads that file and draws a checkbox list over a continuous
+        # field — a nonsense card, with no error anywhere. Refusing is the safer
+        # trade: a wrong filter fails silently in front of the user, a
+        # CompileError fails loudly in front of the caller, who can still express
+        # the intent with a calculated field. Emitting class="quantitative"
+        # instead would mean guessing at a content model no fixture in this
+        # project evidences, and mis-modelled children are exactly what the
+        # loader rejects outright (tests/unit/test_dtd_regression.py).
+        #
+        # models/spec.py rejects this at layer 1 as well. The duplication is
+        # deliberate and matches how the zone->worksheet reference is checked in
+        # both layers: WorkbookCompiler is public and takes a WorkbookSpec built
+        # any way at all, and the one thing it must never do is emit markup it
+        # already knows is wrong.
+        for fname in ws.filters:
+            fld = fmap[fname]
+            if _instance_type(fld, "None") == "quantitative":
+                raise CompileError(
+                    f"worksheet {ws.name!r}: cannot filter on {fname!r}. This compiler emits "
+                    f"categorical (level-members) filters over a field's discrete values, and "
+                    f"{fname!r} is a {fld.datatype} measure — the filter would render as a "
+                    f"checkbox list over a continuous field, which Tableau accepts and draws "
+                    f"as a nonsense card. Filter on a dimension instead, or add a "
+                    f"calculated_field that buckets {fname!r} into named ranges (e.g. "
+                    f'IF [{fname}] > 100 THEN "high" ELSE "low" END) and filter on that.'
+                )
+
         filter_refs = [use(EncodingRef(field=f, aggregation="None")) for f in ws.filters]
 
         # <column> declarations for every distinct field touched by this sheet
@@ -441,15 +532,7 @@ class WorkbookCompiler:
             if fld.reference_name in declared:
                 continue
             declared.add(fld.reference_name)
-            attrs = {
-                "datatype": fld.datatype,
-                "name": fld.reference_name,
-                "role": fld.role,
-                "type": fld.type,
-            }
-            if fld.is_calculated:
-                attrs["caption"] = fld.name
-            c = ET.SubElement(deps, "column", attrs)
+            c = ET.SubElement(deps, "column", _column_attrs(fld))
             if fld.is_calculated and fld.formula:
                 ET.SubElement(c, "calculation", {"class": "tableau", "formula": fld.formula})
 
@@ -512,7 +595,7 @@ class WorkbookCompiler:
         # to <color>/<size>/<text>/<tooltip>. Verified in the reference workbook,
         # whose heat-map sheets carry
         #   <lod column='[federated.…].[none:Site ID:nk]' />
-        # between <color> and <tooltip> (docs/fixtures/EV_WORKBOOK_ANALYSIS.md).
+        # between <color> and <tooltip> (docs/fixtures/REFERENCE_WORKBOOK_ANALYSIS.md).
         # Sibling order inside <encodings> varies across those sheets, so this
         # position is a convention, not a constraint.
         for d in detail_refs:
@@ -522,9 +605,30 @@ class WorkbookCompiler:
             if t:
                 ET.SubElement(enc, "tooltip", {"column": t})
 
-        # A text table needs its measure on the Text encoding to render anything.
-        if ws.template == "text_table" and not label_ref and col_refs:
-            ET.SubElement(enc, "text", {"column": col_refs[0]})
+        # A text table needs a MEASURE on the Text encoding to render anything.
+        #
+        # The guard used to be `not label_ref and col_refs`, which keyed off the
+        # wrong shelf: _mark_requirements("text_table") is (rows=True,
+        # cols=False), so the canonical text table has no columns at all and the
+        # fallback never fired. Verified — rows=["Site", {"field": "Value",
+        # "aggregation": "Sum"}] compiled to <encodings /> with nothing on Text,
+        # plus mark-labels-show=true labelling nothing. And when `columns` WAS
+        # present it took col_refs[0] blindly, which is a dimension whenever the
+        # caller put one there.
+        #
+        # Rows are searched first because that is the shelf the template
+        # requires; a quantitative column-instance is exactly "an aggregated
+        # measure", so SUM(Value) and COUNT(Site) both qualify while a bare
+        # dimension does not.
+        text_fallback: str | None = None
+        if ws.template == "text_table" and not label_ref:
+            for ref in (*ws.rows, *ws.columns):
+                fld = fmap[ref.field]
+                if _instance_type(fld, ref.aggregation) == "quantitative":
+                    text_fallback = _qualified(ds_name, _instance_name(fld, ref.aggregation))
+                    break
+            if text_fallback:
+                ET.SubElement(enc, "text", {"column": text_fallback})
 
         # <style> is the LAST child of <pane>. The loader's content model is
         #   (view, mark, mark-sizing?, encodings?, label-data*, dropline?,
@@ -534,7 +638,13 @@ class WorkbookCompiler:
         # Placing a field on Label is also not enough on its own: without
         # mark-labels-show Tableau keeps labels hidden, so the pill appears on the
         # Marks card but no text is drawn.
-        if ws.label is not None or ws.template in ("heatmap", "text_table"):
+        #
+        # The converse is just as useless and used to happen on every text table
+        # with no measure anywhere: labels switched on with nothing on Text to
+        # draw. The rule is now emitted only where something can actually be
+        # labelled — a heatmap keeps it unconditionally because its Color measure
+        # is what gets labelled.
+        if label_ref or text_fallback or ws.template == "heatmap":
             pstyle = ET.SubElement(pane, "style")
             rule = ET.SubElement(pstyle, "style-rule", {"element": "mark"})
             ET.SubElement(rule, "format", {"attr": "mark-labels-show", "value": "true"})
@@ -708,9 +818,22 @@ class WorkbookCompiler:
 
     # -------------------------------------------------------------- assemble
     def build(self, *, data_dir_ref: str) -> ET.ElementTree:
-        """Compile the full workbook. ``data_dir_ref`` is the CSV directory the
-        generated XML should point at (relative for ``.twbx``, absolute for
-        a bare ``.twb``)."""
+        """Compile the full workbook.
+
+        ``data_dir_ref`` is the **root** directory holding the data, written into
+        the XML verbatim and resolved by Tableau relative to the workbook file.
+        Each data source gets ``<data_dir_ref>/<ds_id>/`` beneath it. The caller
+        owns the value because only the caller knows where the bytes went:
+        ``"Data"`` for a ``.twbx`` (the layout ``packaging.twbx`` writes into the
+        archive), a sidecar directory next to the file for a bare ``.twb``.
+
+        It is never absolute. The docstring here used to promise "absolute for a
+        bare .twb", which is not merely unimplemented but unimplementable: T6
+        forbids machine-identifying paths in a world-readable artifact, and
+        ``build_workbook`` refuses to continue when ``contains_machine_identifiers``
+        finds one. Every path this compiler can legally emit is relative, so the
+        pipeline must put the data where the XML says it is.
+        """
         root = ET.Element(
             "workbook",
             {
@@ -825,8 +948,12 @@ def _remote_type(datatype: str) -> str:
     }.get(datatype, "129")
 
 
-def write_twb(spec: WorkbookSpec, out_path: Path, *, data_dir_ref: str) -> Path:
-    """Compile and write a bare ``.twb``."""
-    compiler = WorkbookCompiler(spec)
-    out_path.write_bytes(compiler.to_bytes(data_dir_ref=data_dir_ref))
-    return out_path
+# NOTE: ``write_twb(spec, out_path, *, data_dir_ref)`` was deleted, not fixed.
+# It had no callers anywhere in src/, tests/ or docs/, and its contract —
+# "compile and write a bare .twb" — cannot be honoured by a function that only
+# writes XML. A standalone .twb is usable only if the .hyper extract and the CSV
+# it names exist next to it, so producing one means building extracts and staging
+# data: the pipeline in compiler/build.py, not a one-line writer. Keeping it
+# would have kept an exported way to produce exactly the unopenable artifact
+# ``data_dir_ref`` was just fixed to prevent. Use ``build_workbook`` with
+# ``output.package_twbx: false``.
