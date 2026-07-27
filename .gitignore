@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+output/
+!output/.gitkeep
+tests/fixtures/binary/
+.pytest_cache/
+.ruff_cache/
+*.hyper
