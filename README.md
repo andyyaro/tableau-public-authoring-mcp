@@ -213,7 +213,20 @@ data before packaging. See `docs/SECURITY.md` and
 claude mcp remove --scope user tableau-public-authoring
 ```
 
-This leaves all other MCP servers untouched. See `docs/ROLLBACK.md`.
+This leaves all other MCP servers untouched.
+
+## Uninstalling
+
+```bash
+claude mcp remove tableau-public-authoring -s user
+claude mcp list          # your other servers should still be listed
+rm -rf <this repo>/output   # generated workbooks are inert local files
+```
+
+Anything already **published** must be deleted by you from your Tableau Public
+profile in the browser. This server has no delete capability, by design:
+publication is irreversible from its side, which is why it requires
+`confirm_publish` and refuses a name collision unless you pass `overwrite`.
 
 ## License
 
