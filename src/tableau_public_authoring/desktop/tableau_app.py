@@ -104,7 +104,12 @@ def app_version(app_path: str) -> str | None:
 
 def app_bundle_id(app_path: str) -> str | None:
     proc = _run(
-        ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", f"{app_path}/Contents/Info.plist"]
+        [
+            "/usr/libexec/PlistBuddy",
+            "-c",
+            "Print :CFBundleIdentifier",
+            f"{app_path}/Contents/Info.plist",
+        ]
     )
     return proc.stdout.strip() or None
 
@@ -160,11 +165,7 @@ def find_window(title_contains: str, *, min_area: int = 200_000) -> dict | None:
     "Opening workbook 'x.twbx'..." which share the workbook name.
     """
     needle = title_contains.lower()
-    hits = [
-        w
-        for w in list_windows()
-        if needle in w["title"].lower() and w["area"] >= min_area
-    ]
+    hits = [w for w in list_windows() if needle in w["title"].lower() and w["area"] >= min_area]
     return max(hits, key=lambda w: w["area"]) if hits else None
 
 
@@ -180,7 +181,11 @@ def status() -> AppStatus:
     app = find_app()
     if not app:
         return AppStatus(
-            installed=False, app_path=None, version=None, bundle_id=None, running=False,
+            installed=False,
+            app_path=None,
+            version=None,
+            bundle_id=None,
+            running=False,
             notes=[f"Tableau Public not found at any of: {', '.join(APP_PATHS)}"],
         )
     acc = check_accessibility()
@@ -192,7 +197,9 @@ def status() -> AppStatus:
         running=is_running(),
         windows=window_names(),
         accessibility_ok=acc,
-        notes=[] if acc else [
+        notes=[]
+        if acc
+        else [
             "Accessibility permission is not granted to the controlling process. "
             "Grant it in System Settings > Privacy & Security > Accessibility."
         ],
@@ -303,6 +310,89 @@ def open_workbook(path: Path, *, timeout: float = 90.0, poll: float = 1.0) -> di
         "error": f"timed out after {timeout}s waiting for a window matching {stem!r}",
         "elapsed_s": round(time.monotonic() - start, 1),
     }
+
+
+def real_click(x: float, y: float, *, settle: float = 0.15) -> None:
+    """Post a genuine HID-level mouse click via CGEvent.
+
+    THIS IS REQUIRED FOR TABLEAU. Tableau Public is a Qt application, and Qt does
+    not respond to System Events' ``click``/``AXPress`` on menu items — those go
+    through the Accessibility layer and are silently ignored, reporting success
+    while doing nothing. Only real CGEvent HID events activate its menus.
+
+    Verified: ``click``, ``AXPress`` and AX keyboard navigation all no-op'd on
+    ``File > Save to Tableau Public As...``; a CGEvent click opened it first try.
+    """
+    import Quartz
+
+    pt = Quartz.CGPointMake(float(x), float(y))
+    Quartz.CGEventPost(
+        Quartz.kCGHIDEventTap,
+        Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, pt, 0),
+    )
+    time.sleep(settle)
+    Quartz.CGEventPost(
+        Quartz.kCGHIDEventTap,
+        Quartz.CGEventCreateMouseEvent(
+            None, Quartz.kCGEventLeftMouseDown, pt, Quartz.kCGMouseButtonLeft
+        ),
+    )
+    time.sleep(0.09)
+    Quartz.CGEventPost(
+        Quartz.kCGHIDEventTap,
+        Quartz.CGEventCreateMouseEvent(
+            None, Quartz.kCGEventLeftMouseUp, pt, Quartz.kCGMouseButtonLeft
+        ),
+    )
+
+
+"""Virtual key codes used for menu shortcuts (Carbon kVK_* values)."""
+VK_ANSI_S = 1
+
+
+def real_key(keycode: int, *, command: bool = False, shift: bool = False) -> None:
+    """Post a genuine HID key event with modifiers.
+
+    Same reasoning as :func:`real_click`: Tableau is Qt and ignores Accessibility
+    input. A keyboard shortcut is markedly more robust than clicking a menu item,
+    because it needs no geometry, no menu to stay open, and no mouse tracking.
+    """
+    import Quartz
+
+    flags = 0
+    if command:
+        flags |= Quartz.kCGEventFlagMaskCommand
+    if shift:
+        flags |= Quartz.kCGEventFlagMaskShift
+
+    source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+    down = Quartz.CGEventCreateKeyboardEvent(source, keycode, True)
+    up = Quartz.CGEventCreateKeyboardEvent(source, keycode, False)
+    Quartz.CGEventSetFlags(down, flags)
+    Quartz.CGEventSetFlags(up, flags)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
+    time.sleep(0.08)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
+
+
+def element_center(applescript_selector: str) -> tuple[int, int] | None:
+    """Centre point of an AX element. AX exposes menu *geometry* reliably even
+    though it hides Tableau's windows, so geometry + CGEvent is the working combo.
+    """
+    script = f"""
+    tell application "System Events" to tell process "{PROCESS_NAME}"
+      set el to {applescript_selector}
+      set p to position of el
+      set s to size of el
+      return ((item 1 of p) as text) & "," & ((item 2 of p) as text) & "," & ¬
+             ((item 1 of s) as text) & "," & ((item 2 of s) as text)
+    end tell
+    """
+    try:
+        x, y, w, h = (int(v) for v in osascript(script).split(","))
+    except (DesktopError, ValueError):
+        return None
+    return x + w // 2, y + h // 2
 
 
 def screenshot_window(window_id: int, out_path: Path) -> Path:

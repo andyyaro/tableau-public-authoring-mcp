@@ -30,6 +30,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The live tier drives a real GUI and must never run by accident - a bare
+# `pytest` would otherwise launch Tableau. Override with `pytest -m live`
+# (a CLI -m wins over this one).
+addopts = "-m 'not live'"
 markers = [
     "live: requires Tableau Public installed (not for CI)",
     "publish: publishes to the real Tableau Public (never in CI)",

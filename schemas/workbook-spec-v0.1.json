@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andyyaro/mcp-tableau-public-authoring/schemas/workbook-spec-v0.1.json",
+  "title": "Tableau Public Authoring Specification v0.1",
+  "description": "Declarative description of a Tableau workbook to generate. Unknown properties are rejected everywhere.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workbook", "data_sources", "worksheets", "output"],
+  "properties": {
+    "spec_version": { "const": "0.1", "default": "0.1" },
+    "workbook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/displayName" },
+        "description": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "data_sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "type": { "const": "csv", "default": "csv" },
+          "path": {
+            "type": "string",
+            "description": "Absolute path to a .csv file. Traversal segments are rejected.",
+            "pattern": "^/"
+          }
+        }
+      }
+    },
+    "calculated_fields": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "data_source", "formula"],
+        "properties": {
+          "name": { "$ref": "#/$defs/displayName" },
+          "data_source": { "$ref": "#/$defs/identifier" },
+          "formula": { "type": "string", "minLength": 1, "maxLength": 8000 },
+          "datatype": { "$ref": "#/$defs/datatype", "default": "string" }
+        }
+      }
+    },
+    "worksheets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "template", "data_source"],
+        "properties": {
+          "name": { "$ref": "#/$defs/displayName" },
+          "template": {
+            "enum": ["bar", "line", "text_table", "heatmap", "scatter", "circle"]
+          },
+          "data_source": { "$ref": "#/$defs/identifier" },
+          "rows": { "type": "array", "items": { "$ref": "#/$defs/encodingRef" } },
+          "columns": { "type": "array", "items": { "$ref": "#/$defs/encodingRef" } },
+          "color": { "$ref": "#/$defs/encodingRef" },
+          "size": { "$ref": "#/$defs/encodingRef" },
+          "label": { "$ref": "#/$defs/encodingRef" },
+          "detail": {
+            "type": "array",
+            "description": "Tableau's Detail shelf. Each dimension listed here becomes a grouping key, raising the mark count (e.g. one mark per site instead of one per Color value). A field may appear at most once.",
+            "items": { "$ref": "#/$defs/encodingRef" }
+          },
+          "tooltips": { "type": "array", "items": { "$ref": "#/$defs/encodingRef" } },
+          "filters": { "type": "array", "items": { "type": "string" } },
+          "title": { "type": "string", "maxLength": 300 },
+          "subtitle": { "type": "string", "maxLength": 500 }
+        }
+      }
+    },
+    "dashboards": {
+      "type": "array",
+      "default": [],
+      "maxItems": 10,
+      "description": "EXPERIMENTAL / UNVERIFIED. Dashboard XML was reverse-engineered from published fixtures at document version 18.1 written by older Tableau builds; no generated dashboard has been opened in Tableau Public 2026.2.0. A dashboard may fail to load. See docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "worksheets"],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/displayName",
+            "description": "Unique across dashboards, and distinct from every worksheet name."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Dashboard title. Emits both the title text and the title card that gives it canvas space."
+          },
+          "direction": {
+            "enum": ["vertical", "horizontal"],
+            "default": "vertical",
+            "description": "Flow direction of the single layout container holding the worksheets."
+          },
+          "sizing_mode": {
+            "enum": ["fixed", "automatic"],
+            "default": "fixed",
+            "description": "'fixed' declares the pixel canvas below; 'automatic' fits the window and forbids width/height."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000,
+            "default": 1200,
+            "description": "Canvas width in PIXELS. Only valid when sizing_mode is 'fixed'."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 10000,
+            "default": 800,
+            "description": "Canvas height in PIXELS. Only valid when sizing_mode is 'fixed'."
+          },
+          "worksheets": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "Worksheets to place, in layout order. Each must exist and may appear at most once per dashboard.",
+            "items": { "$ref": "#/$defs/dashboardZone" }
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory"],
+      "properties": {
+        "directory": { "type": "string", "pattern": "^/" },
+        "package_twbx": { "type": "boolean", "default": true }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "description": "Lowercase alphanumeric/underscore, starting with a letter."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9 _\\-.,()/&'%:+#]*$"
+    },
+    "datatype": {
+      "enum": ["string", "integer", "real", "boolean", "date", "datetime"]
+    },
+    "aggregation": {
+      "enum": ["Sum", "Avg", "Min", "Max", "Count", "CountD", "None", "Attribute"]
+    },
+    "dashboardZone": {
+      "description": "A worksheet placed on a dashboard, referenced by exact worksheet name.",
+      "oneOf": [
+        { "type": "string", "minLength": 1, "description": "Worksheet name, title shown" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["worksheet"],
+          "properties": {
+            "worksheet": { "type": "string", "minLength": 1 },
+            "show_title": {
+              "type": "boolean",
+              "default": true,
+              "description": "false hides that worksheet's own title inside the dashboard."
+            }
+          }
+        }
+      ]
+    },
+    "encodingRef": {
+      "oneOf": [
+        { "type": "string", "description": "Field name, no aggregation" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field"],
+          "properties": {
+            "field": { "type": "string" },
+            "aggregation": { "$ref": "#/$defs/aggregation", "default": "None" }
+          }
+        }
+      ]
+    }
+  }
+}

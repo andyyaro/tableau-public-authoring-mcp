@@ -41,7 +41,9 @@ def resolve_input_file(raw: str, *, must_suffix: str | None = None) -> Path:
         raise PathSecurityError(f"not a regular file: {resolved}")
 
     if must_suffix and resolved.suffix.lower() != must_suffix.lower():
-        raise PathSecurityError(f"expected a {must_suffix} file, got: {resolved.suffix or '(none)'}")
+        raise PathSecurityError(
+            f"expected a {must_suffix} file, got: {resolved.suffix or '(none)'}"
+        )
 
     size = resolved.stat().st_size
     if size > MAX_CSV_BYTES:

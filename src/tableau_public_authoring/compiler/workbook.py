@@ -7,6 +7,12 @@ immune to XML injection through user-supplied names and formulas (T1).
 Node structures were derived from a real workbook produced by the installed
 Tableau Public build (see docs/fixtures/EV_WORKBOOK_ANALYSIS.md). Version
 metadata is pinned to that build.
+
+**The ``<dashboards>`` section is EXPERIMENTAL / UNVERIFIED.** That reference
+workbook contains no dashboards, so dashboard XML was instead reverse-engineered
+from published workbooks at document version 18.1 written by Tableau builds
+2019.4.3-2023.1.0 (docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md). No generated
+dashboard has been opened in Tableau. See :meth:`WorkbookCompiler._build_dashboard`.
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from ..models.spec import EncodingRef, Worksheet, WorkbookSpec
+from ..models.spec import Dashboard, EncodingRef, WorkbookSpec, Worksheet
 from .fields import Field
 from .ids import connection_name, datasource_name
 
@@ -36,6 +42,32 @@ MARK_CLASS = {
     "circle": "Circle",
 }
 
+# Canvas fit. Stored as <windows><window><viewpoint><zoom type=...>, AFTER <cards>.
+# Absent  == Tableau's "Standard" fit, which renders a small viz in the top-left
+# corner. Values observed in the reference workbook: fit-width and entire-view.
+ZOOM_TYPE = {
+    "standard": None,
+    "fit_width": "fit-width",
+    "fit_height": "fit-height",
+    "entire_view": "entire-view",
+}
+
+# Defaults mirror the choices Tableau's own author made in the reference workbook:
+# grid-shaped views get entire-view, everything else fit-width.
+_DEFAULT_FIT = {
+    "bar": "fit_width",
+    "line": "fit_width",
+    "scatter": "fit_width",
+    "circle": "fit_width",
+    "heatmap": "entire_view",
+    "text_table": "entire_view",
+}
+
+
+def default_fit(template: str) -> str:
+    return _DEFAULT_FIT.get(template, "fit_width")
+
+
 _DERIVATION_PREFIX = {
     "None": "none",
     "Sum": "sum",
@@ -49,9 +81,81 @@ _DERIVATION_PREFIX = {
 
 _TYPE_SUFFIX = {"nominal": "nk", "quantitative": "qk", "ordinal": "ok"}
 
+# ---------------------------------------------------------------- dashboards
+# EXPERIMENTAL / UNVERIFIED. See _build_dashboard and models.spec.Dashboard.
+#
+# Zone geometry is a 0..100000 normalised grid, ABSOLUTE within a dashboard (not
+# parent-relative), independently normalised on each axis against the canvas
+# extent. This is NOT pixels: the <size> element's min/max bounds and a zone's
+# 'fixed-size' are pixels, the x/y/w/h below are grid units. Mixing them puts
+# zones off by ~two orders of magnitude, so the two unit systems are kept in
+# separately named constants. Evidence: DASHBOARD_FIXTURE_ANALYSIS.md §4.1.
+ZONE_GRID = 100000
+
+# Grid height reserved for the dashboard-title card. 6000/100000 of an 800px
+# canvas is 48px, matching the fixture skeleton (§9).
+TITLE_ZONE_GRID_HEIGHT = 6000
+
+ZONE_MARGIN = "4"
+ROOT_ZONE_MARGIN = "8"
+
 
 class CompileError(RuntimeError):
     """Raised when a specification cannot be compiled into valid workbook XML."""
+
+
+class _ZoneIds:
+    """Sequential zone-id allocator, one instance per dashboard.
+
+    Tableau's zone ids are small unique integers scoped to a dashboard, not the
+    28-character base-36 identifiers ``compiler/ids.py`` produces for data
+    sources (§4.5). A counter over a deterministic tree walk satisfies both
+    Tableau's format and the project's byte-determinism guarantee.
+    """
+
+    def __init__(self) -> None:
+        self._next = 1
+
+    def take(self) -> str:
+        value = self._next
+        self._next += 1
+        return str(value)
+
+
+def _tile(count: int, total: int, offset: int) -> list[tuple[int, int]]:
+    """Split ``total`` grid units into ``count`` contiguous spans from ``offset``.
+
+    Siblings inside a layout container must tile their parent's extent exactly —
+    no gap, no overlap (§4.1). Integer division alone does not sum back to the
+    total for most counts, so the final span absorbs the rounding remainder.
+    Returns ``(start, size)`` pairs.
+    """
+    if count <= 0:
+        return []
+    span = total // count
+    spans: list[tuple[int, int]] = []
+    pos = offset
+    for i in range(count):
+        size = total - (pos - offset) if i == count - 1 else span
+        spans.append((pos, size))
+        pos += size
+    return spans
+
+
+def _zone_style(zone: ET.Element, margin: str) -> None:
+    """Append the near-universal border/margin quartet as the zone's LAST child.
+
+    ``zone-style`` is the final child in 100% of the fixture zones that have one;
+    nested ``<zone>`` children always precede it (§4.2/§4.6).
+    """
+    style = ET.SubElement(zone, "zone-style")
+    for attr, value in (
+        ("border-color", "#000000"),
+        ("border-style", "none"),
+        ("border-width", "0"),
+        ("margin", margin),
+    ):
+        ET.SubElement(style, "format", {"attr": attr, "value": value})
 
 
 def _instance_type(field: Field, aggregation: str) -> str:
@@ -278,9 +382,7 @@ class WorkbookCompiler:
             if ws.subtitle:
                 if ws.title:
                     ET.SubElement(ft, "run").text = "\n"
-                sub = ET.SubElement(
-                    ft, "run", {"fontcolor": "#898989", "fontsize": "10"}
-                )
+                sub = ET.SubElement(ft, "run", {"fontcolor": "#898989", "fontsize": "10"})
                 sub.text = ws.subtitle
 
         table = ET.SubElement(node, "table")
@@ -309,6 +411,15 @@ class WorkbookCompiler:
         color_ref = use(ws.color)
         size_ref = use(ws.size)
         label_ref = use(ws.label)
+
+        # The Detail shelf. Refs are passed through UNCHANGED — deliberately the
+        # opposite of _tooltip_ref below. A dimension on Detail keeps derivation
+        # "None" (``[none:Field:nk]``) because it *is* the grouping key: it is
+        # what raises the mark count from one-per-Color-value to one-per-entity.
+        # Promoting it to Attribute would preserve the existing level of detail,
+        # which is precisely what Detail exists to change. A measure on Detail
+        # aggregates normally, using whatever aggregation the spec names.
+        detail_refs = [use(d) for d in ws.detail]
 
         # A dimension dropped on Tooltip must use the Attribute derivation
         # (``[attr:Field:nk]``). With derivation="None" Tableau treats it as a
@@ -366,9 +477,7 @@ class WorkbookCompiler:
                 continue
             filt = ET.SubElement(view, "filter", {"class": "categorical", "column": fld_ref})
             inst = _instance_name(fmap_ws[fname], "None")
-            grp = ET.SubElement(
-                filt, "groupfilter", {"function": "level-members", "level": inst}
-            )
+            grp = ET.SubElement(filt, "groupfilter", {"function": "level-members", "level": inst})
             # These attributes are namespaced under the Tableau 'user' namespace.
             grp.set(f"{{{USER_NS}}}ui-enumeration", "all")
             grp.set(f"{{{USER_NS}}}ui-marker", "enumerate")
@@ -399,6 +508,16 @@ class WorkbookCompiler:
             ET.SubElement(enc, "size", {"column": size_ref})
         if label_ref:
             ET.SubElement(enc, "text", {"column": label_ref})
+        # Tableau serialises the Detail shelf as <lod> inside <encodings>, next
+        # to <color>/<size>/<text>/<tooltip>. Verified in the reference workbook,
+        # whose heat-map sheets carry
+        #   <lod column='[federated.…].[none:Site ID:nk]' />
+        # between <color> and <tooltip> (docs/fixtures/EV_WORKBOOK_ANALYSIS.md).
+        # Sibling order inside <encodings> varies across those sheets, so this
+        # position is a convention, not a constraint.
+        for d in detail_refs:
+            if d:
+                ET.SubElement(enc, "lod", {"column": d})
         for t in tooltip_refs:
             if t:
                 ET.SubElement(enc, "tooltip", {"column": t})
@@ -407,11 +526,185 @@ class WorkbookCompiler:
         if ws.template == "text_table" and not label_ref and col_refs:
             ET.SubElement(enc, "text", {"column": col_refs[0]})
 
+        # <style> is the LAST child of <pane>. The loader's content model is
+        #   (view, mark, mark-sizing?, encodings?, label-data*, dropline?,
+        #    trendline?, reference-line, customized-tooltip, customized-label, style)
+        # Emitting it before <encodings> yields:
+        #   element 'encodings' is not allowed for content model ...
+        # Placing a field on Label is also not enough on its own: without
+        # mark-labels-show Tableau keeps labels hidden, so the pill appears on the
+        # Marks card but no text is drawn.
+        if ws.label is not None or ws.template in ("heatmap", "text_table"):
+            pstyle = ET.SubElement(pane, "style")
+            rule = ET.SubElement(pstyle, "style-rule", {"element": "mark"})
+            ET.SubElement(rule, "format", {"attr": "mark-labels-show", "value": "true"})
+            ET.SubElement(rule, "format", {"attr": "mark-labels-cull", "value": "true"})
+
         # <rows>/<cols> follow <panes> in the loader's content model.
         ET.SubElement(table, "rows").text = " / ".join(r for r in row_refs if r)
         ET.SubElement(table, "cols").text = " / ".join(c for c in col_refs if c)
 
         return node
+
+    # ------------------------------------------------------------- dashboard
+    def _build_dashboard(self, dash: Dashboard) -> ET.Element:
+        """Compile one dashboard. **EXPERIMENTAL / UNVERIFIED.**
+
+        The structure below is reverse-engineered from published fixtures at
+        document version 18.1 (docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md). No
+        fixture written by the target build 2026.2.0 was available and **no
+        generated dashboard has ever been opened in Tableau**, so this may fail
+        to load. The specific worry is ``type-v2``: the attribute appears in zero
+        fixtures across document versions 8.3/10.4/18.1, so plain ``type`` is
+        emitted; if 2026.2.0 requires ``type-v2`` every zone here is rejected.
+
+        Child order is ``layout-options?, style, size, zones`` and is NOT
+        negotiable — Tableau's loader enforces a DTD content model and rejects
+        misordered children outright. ``repository-location``, ``simple-id`` and
+        ``devicelayouts`` are published-only and deliberately omitted.
+
+        A title needs TWO cooperating pieces: ``layout-options/title`` carries
+        the text and a ``type="title"`` zone gives it canvas space. Emitting one
+        without the other is a silent no-op (§6).
+        """
+        ids = _ZoneIds()
+        node = ET.Element("dashboard", {"name": dash.name})
+
+        # 1. title text. ElementTree escapes the text; no markup is ever built
+        #    by string concatenation (T1).
+        if dash.title:
+            lo = ET.SubElement(node, "layout-options")
+            title = ET.SubElement(lo, "title")
+            ft = ET.SubElement(title, "formatted-text")
+            ET.SubElement(ft, "run").text = dash.title
+
+        # 2. present and empty in every fixture; emitted unconditionally.
+        ET.SubElement(node, "style")
+
+        # 3. <size> bounds are PIXELS. A fixed canvas sets min == max on both axes.
+        if dash.sizing_mode == "fixed":
+            ET.SubElement(
+                node,
+                "size",
+                {
+                    "maxheight": str(dash.height),
+                    "maxwidth": str(dash.width),
+                    "minheight": str(dash.height),
+                    "minwidth": str(dash.width),
+                    "sizing-mode": "fixed",
+                },
+            )
+        else:
+            ET.SubElement(node, "size", {"sizing-mode": "automatic"})
+
+        # 4. <datasources>/<datasource-dependencies> are required only when a
+        #    zone references a field (filter/legend/highlighter cards). This
+        #    version places worksheets only, so both are correctly absent (§3).
+
+        # 5. exactly one root zone at full grid extent.
+        zones = ET.SubElement(node, "zones")
+        root_zone = ET.SubElement(
+            zones,
+            "zone",
+            {
+                "h": str(ZONE_GRID),
+                "id": ids.take(),
+                "type": "layout-basic",
+                "w": str(ZONE_GRID),
+                "x": "0",
+                "y": "0",
+            },
+        )
+
+        flow_param = "vert" if dash.direction == "vertical" else "horz"
+        has_title = bool(dash.title)
+
+        if has_title and flow_param == "horz":
+            # A horizontal strip of sheets cannot also hold the title card, so an
+            # outer vertical flow stacks [title, horizontal strip].
+            outer = self._flow_zone(root_zone, ids, "vert", 0, 0, ZONE_GRID, ZONE_GRID)
+            self._title_zone(outer, ids, 0, 0, ZONE_GRID, TITLE_ZONE_GRID_HEIGHT)
+            container = self._flow_zone(
+                outer,
+                ids,
+                "horz",
+                0,
+                TITLE_ZONE_GRID_HEIGHT,
+                ZONE_GRID,
+                ZONE_GRID - TITLE_ZONE_GRID_HEIGHT,
+            )
+            content_x, content_y = 0, TITLE_ZONE_GRID_HEIGHT
+            content_w, content_h = ZONE_GRID, ZONE_GRID - TITLE_ZONE_GRID_HEIGHT
+        else:
+            container = self._flow_zone(root_zone, ids, flow_param, 0, 0, ZONE_GRID, ZONE_GRID)
+            content_x, content_y = 0, 0
+            content_w, content_h = ZONE_GRID, ZONE_GRID
+            if has_title:
+                self._title_zone(container, ids, 0, 0, ZONE_GRID, TITLE_ZONE_GRID_HEIGHT)
+                content_y = TITLE_ZONE_GRID_HEIGHT
+                content_h = ZONE_GRID - TITLE_ZONE_GRID_HEIGHT
+
+        # Worksheet zones tile the container exactly along its flow axis.
+        count = len(dash.worksheets)
+        if flow_param == "vert":
+            spans = _tile(count, content_h, content_y)
+            boxes = [(content_x, start, content_w, size) for start, size in spans]
+        else:
+            spans = _tile(count, content_w, content_x)
+            boxes = [(start, content_y, size, content_h) for start, size in spans]
+
+        for placed, (x, y, w, h) in zip(dash.worksheets, boxes, strict=True):
+            # A worksheet zone is identified by having a 'name' and NO 'type'
+            # attribute. The link is a bare name string — there is no id-based
+            # reference in the format (§4.4).
+            attrs = {"h": str(h), "id": ids.take(), "name": placed.worksheet}
+            if not placed.show_title:
+                attrs["show-title"] = "false"
+            attrs.update({"w": str(w), "x": str(x), "y": str(y)})
+            _zone_style(ET.SubElement(container, "zone", attrs), ZONE_MARGIN)
+
+        # The root zone's own style must follow its nested zones.
+        _zone_style(root_zone, ROOT_ZONE_MARGIN)
+        return node
+
+    @staticmethod
+    def _flow_zone(
+        parent: ET.Element, ids: _ZoneIds, param: str, x: int, y: int, w: int, h: int
+    ) -> ET.Element:
+        """A ``layout-flow`` container. ``param`` is 'horz' or 'vert' (§4.7)."""
+        return ET.SubElement(
+            parent,
+            "zone",
+            {
+                "h": str(h),
+                "id": ids.take(),
+                "param": param,
+                "type": "layout-flow",
+                "w": str(w),
+                "x": str(x),
+                "y": str(y),
+            },
+        )
+
+    @staticmethod
+    def _title_zone(
+        parent: ET.Element, ids: _ZoneIds, x: int, y: int, w: int, h: int
+    ) -> ET.Element:
+        """The card that gives ``layout-options/title`` space on the canvas (§6)."""
+        zone = ET.SubElement(
+            parent,
+            "zone",
+            {
+                "h": str(h),
+                "id": ids.take(),
+                "type": "title",
+                "w": str(w),
+                "x": str(x),
+                "y": str(y),
+            },
+        )
+        _zone_style(zone, ZONE_MARGIN)
+        return zone
 
     # -------------------------------------------------------------- assemble
     def build(self, *, data_dir_ref: str) -> ET.ElementTree:
@@ -439,12 +732,23 @@ class WorkbookCompiler:
         for ws in self.spec.worksheets:
             ws_parent.append(self._build_worksheet(ws))
 
+        # <dashboards> sits between <worksheets> and <windows> in every fixture
+        # across document versions 8.3/10.4/18.1, and carries no attributes (§2).
+        if self.spec.dashboards:
+            db_parent = ET.SubElement(root, "dashboards")
+            for dash in self.spec.dashboards:
+                db_parent.append(self._build_dashboard(dash))
+
         windows = ET.SubElement(root, "windows", {"source-height": "278"})
+        # Exactly one window is maximized. When a dashboard exists it is the
+        # entry point, so it takes the flag instead of the first worksheet.
+        has_dashboards = bool(self.spec.dashboards)
         for i, ws in enumerate(self.spec.worksheets):
             win = ET.SubElement(
                 windows,
                 "window",
-                {"class": "worksheet", "name": ws.name, "maximized": "true"} if i == 0
+                {"class": "worksheet", "name": ws.name, "maximized": "true"}
+                if i == 0 and not has_dashboards
                 else {"class": "worksheet", "name": ws.name},
             )
             cards = ET.SubElement(win, "cards")
@@ -472,6 +776,30 @@ class WorkbookCompiler:
                             "type": "filter",
                         },
                     )
+
+            # How the viz fills its canvas. Stored as <viewpoint><zoom> AFTER
+            # <cards> — not on the worksheet, which is why it is easy to miss.
+            # Without it Tableau uses "Standard", which draws a small viz tucked
+            # into the top-left corner instead of filling the view.
+            zoom = ZOOM_TYPE.get(ws.fit or default_fit(ws.template))
+            if zoom:
+                vp = ET.SubElement(win, "viewpoint")
+                ET.SubElement(vp, "zoom", {"type": zoom})
+
+        # A dashboard window has <viewpoints> + <active> and, unlike a worksheet
+        # window, NO <cards>: a dashboard has no shelves (§7).
+        for i, dash in enumerate(self.spec.dashboards):
+            win = ET.SubElement(
+                windows,
+                "window",
+                {"class": "dashboard", "name": dash.name, "maximized": "true"}
+                if i == 0
+                else {"class": "dashboard", "name": dash.name},
+            )
+            viewpoints = ET.SubElement(win, "viewpoints")
+            for ws_name in dash.worksheet_names():
+                ET.SubElement(viewpoints, "viewpoint", {"name": ws_name})
+            ET.SubElement(win, "active", {"id": "-1"})
 
         ET.indent(root, space="  ")
         return ET.ElementTree(root)

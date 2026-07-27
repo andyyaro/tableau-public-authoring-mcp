@@ -100,9 +100,7 @@ def build_hyper(csv_path: Path, fields: list[Field], out_path: Path) -> int:
     table = TableName(EXTRACT_SCHEMA, EXTRACT_TABLE)
     definition = TableDefinition(
         table_name=table,
-        columns=[
-            TableDefinition.Column(f.name, _sql_type(f.datatype)) for f in physical
-        ],
+        columns=[TableDefinition.Column(f.name, _sql_type(f.datatype)) for f in physical],
     )
 
     rows: list[list] = []

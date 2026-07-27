@@ -1,0 +1,694 @@
+"""Identify, raise and close individual Tableau Public document windows.
+
+WHY THIS MODULE EXISTS
+----------------------
+Driving the publish flow leaves a trail of open workbooks. Every one of them is a
+hazard: Tableau's menu commands apply to whatever document is active, so a stale
+window that happens to be frontmost can receive a publish command intended for a
+different workbook. Before this module there was no way to close *one specific*
+workbook or to reliably raise one, so cleanup meant closing everything by hand.
+
+WHY IT LOOKS LIKE THIS (each point cost real debugging time; do not "simplify")
+------------------------------------------------------------------------------
+1. Tableau Public 2026.2.0 is a **Qt** app. System Events ``click`` and
+   ``perform action "AXPress"`` report success and do nothing. Only genuine HID
+   events posted with ``Quartz.CGEventPost(kCGHIDEventTap, ...)`` have any effect,
+   so every interaction here goes through :func:`~.tableau_app.real_click` or
+   :func:`post_command_key`.
+2. Accessibility reports ``count of windows = 0`` for Tableau even with document
+   windows visibly open. AX can neither enumerate nor raise them, which rules out
+   the ordinary ``AXRaise`` / ``AXMinimized = false`` approach entirely.
+3. Window discovery therefore uses ``CGWindowListCopyWindowInfo``.
+   ``kCGWindowListOptionOnScreenOnly`` omits minimized windows, while
+   ``kCGWindowListOptionAll`` still lists them — the difference between the two
+   lists is itself the most reliable minimized signal available.
+4. Tableau's **Window menu lists worksheets, not documents**, so it cannot be used
+   to identify or select a workbook.
+5. Document windows are titled exactly ``Tableau Public - <workbook stem>``.
+
+SAFETY POSTURE
+--------------
+Closing a window can destroy unsaved work, so this module is deliberately timid:
+it refuses to act on a window it cannot positively identify by title, it never
+answers a "save changes?" prompt, and bulk cleanup defaults to a dry run.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+from .tableau_app import PROCESS_NAME, DesktopError, find_app, osascript, real_click
+
+DOC_TITLE_PREFIX = "Tableau Public - "
+
+# --- minimized-window heuristics -------------------------------------------
+# Measured on Tableau Public 2026.2.0 (macOS 15, Dock on the left edge):
+#   * a restored document window is 1291x949 at x=221, y=33, on-screen;
+#   * a window minimized into the Dock keeps its title and owner but shrinks to a
+#     Dock *tile* of roughly 140x161..140x190 at the Dock's x (16 here), and is
+#     still reported as on-screen;
+#   * a window minimized while Tableau is hidden/behind is parked off-screen at
+#     roughly (-234, 367) with bounds 218x161 and disappears from the on-screen
+#     list altogether.
+# No public API exposes "is minimized" for another process's windows, so this is a
+# heuristic, and it is wrong in two known ways:
+#   * a window on another Space is absent from the on-screen list and is reported
+#     here as minimized (it is unreachable by clicking either way, so the
+#     resulting advice — reopen it via `open -a` — is still correct);
+#   * a genuinely tiny restored window would be misreported, which Tableau's own
+#     minimum document size (far above 320x320) makes unreachable in practice.
+MINIMIZED_TILE_MAX_EDGE = 320
+UNUSABLE_EDGE = 10
+
+# A title bar click lands here relative to the window's top-left corner.
+TITLE_BAR_OFFSET_Y = 12
+
+# Bulk cleanup guard: a short prefix such as "E" would sweep up a user's real
+# workbook, so prefixes must be specific enough to be deliberate.
+MIN_PREFIX_LEN = 3
+
+# Titles Tableau/macOS use for a "do you want to save?" surface. Matching is
+# advisory only: the close path also refuses to claim success whenever the target
+# window survives, so an unrecognised prompt still fails safe.
+SAVE_PROMPT_TITLE_HINTS = (
+    "save changes",
+    "do you want to save",
+    "unsaved change",
+    "save workbook",
+    "save the changes",
+)
+
+KEY_CODES = {"w": 13}
+
+#: Returns raw window records: ``id, title, x, y, width, height, on_screen``,
+#: on-screen windows first in front-to-back order. Injectable for testing.
+Enumerator = Callable[[], list[dict]]
+#: ``(x, y) -> None`` — posts a real HID click. Injectable for testing.
+Clicker = Callable[[float, float], None]
+#: ``(key) -> None`` — posts a real HID Command-<key>. Injectable for testing.
+KeySender = Callable[[str], None]
+Sleeper = Callable[[float], None]
+Activator = Callable[[], None]
+Opener = Callable[[Path], None]
+Raiser = Callable[[str], "tuple[bool, str]"]
+
+
+@dataclass(frozen=True)
+class WindowInfo:
+    """One window belonging to the Tableau Public process."""
+
+    id: int
+    title: str
+    workbook_stem: str | None
+    x: float
+    y: float
+    width: float
+    height: float
+    is_minimized: bool
+    is_document: bool
+    on_screen: bool = True
+
+    @property
+    def area(self) -> float:
+        return self.width * self.height
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "workbook_stem": self.workbook_stem,
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+            "is_minimized": self.is_minimized,
+            "is_document": self.is_document,
+            "on_screen": self.on_screen,
+        }
+
+
+# --- naming ----------------------------------------------------------------
+
+
+def normalise_stem(value: str) -> str:
+    """Canonical form used for every workbook-name comparison.
+
+    Tolerates the three shapes a caller realistically has to hand: a bare stem, a
+    file name (``X.twbx``) and a full window title (``Tableau Public - X``).
+    ``_`` becomes a space to match the existing publisher behaviour, because
+    Tableau shows underscores in titles while humans type spaces.
+    """
+    text = value.strip()
+    if text.startswith(DOC_TITLE_PREFIX):
+        text = text[len(DOC_TITLE_PREFIX) :]
+    for suffix in (".twbx", ".twb"):
+        if text.lower().endswith(suffix):
+            text = text[: -len(suffix)]
+            break
+    return " ".join(text.replace("_", " ").lower().split())
+
+
+def _stem_from_title(title: str) -> str | None:
+    if not title.startswith(DOC_TITLE_PREFIX):
+        return None
+    stem = title[len(DOC_TITLE_PREFIX) :].strip()
+    return stem or None
+
+
+def _looks_minimized(x: float, y: float, width: float, height: float, on_screen: bool) -> bool:
+    """See the module-level notes on MINIMIZED_TILE_MAX_EDGE for the evidence."""
+    if not on_screen:
+        return True
+    if x < 0 or y < 0:
+        return True
+    return width <= MINIMIZED_TILE_MAX_EDGE and height <= MINIMIZED_TILE_MAX_EDGE
+
+
+# --- discovery -------------------------------------------------------------
+
+
+def quartz_windows() -> list[dict]:
+    """Default enumerator: Tableau's windows straight from the window server.
+
+    Both CoreGraphics lists are queried because neither is sufficient alone: the
+    on-screen list is ordered front-to-back but omits minimized windows, and the
+    all-windows list includes them but carries no usable ordering. On-screen
+    windows are returned first, in their front-to-back order, so callers can treat
+    the first entry as the frontmost.
+
+    Untitled windows are dropped. Tableau litters the window server with dozens of
+    untitled 1512x33 and 500x500 helper surfaces; keeping them would add noise to
+    every report without ever helping identify a document.
+    """
+    try:
+        import Quartz
+    except ImportError:  # pragma: no cover - environment guard
+        return []
+
+    def _query(option: int) -> list[dict]:
+        return list(
+            Quartz.CGWindowListCopyWindowInfo(
+                option | Quartz.kCGWindowListExcludeDesktopElements,
+                Quartz.kCGNullWindowID,
+            )
+            or []
+        )
+
+    def _row(w: dict, *, on_screen: bool) -> dict | None:
+        if "Tableau" not in (w.get("kCGWindowOwnerName") or ""):
+            return None
+        if int(w.get("kCGWindowLayer", 0)) != 0:  # menus, popovers, tooltips
+            return None
+        title = w.get("kCGWindowName") or ""
+        if not title.strip():
+            return None
+        b = w.get("kCGWindowBounds") or {}
+        return {
+            "id": int(w.get("kCGWindowNumber", 0)),
+            "title": title,
+            "x": float(b.get("X", 0.0)),
+            "y": float(b.get("Y", 0.0)),
+            "width": float(b.get("Width", 0.0)),
+            "height": float(b.get("Height", 0.0)),
+            "on_screen": on_screen,
+        }
+
+    rows: list[dict] = []
+    seen: set[int] = set()
+    for w in _query(Quartz.kCGWindowListOptionOnScreenOnly):
+        row = _row(w, on_screen=True)
+        if row and row["id"] not in seen:
+            seen.add(row["id"])
+            rows.append(row)
+    for w in _query(Quartz.kCGWindowListOptionAll):
+        row = _row(w, on_screen=False)
+        if row and row["id"] not in seen:
+            seen.add(row["id"])
+            rows.append(row)
+    return rows
+
+
+def classify_windows(*, enumerator: Enumerator | None = None) -> list[WindowInfo]:
+    """All Tableau windows, tagged as document/minimized, frontmost first."""
+    raw = (enumerator or quartz_windows)()
+    out: list[WindowInfo] = []
+    for w in raw:
+        title = str(w.get("title") or "")
+        x = float(w.get("x", 0.0))
+        y = float(w.get("y", 0.0))
+        width = float(w.get("width", 0.0))
+        height = float(w.get("height", 0.0))
+        on_screen = bool(w.get("on_screen", True))
+        stem = _stem_from_title(title)
+        out.append(
+            WindowInfo(
+                id=int(w.get("id", 0)),
+                title=title,
+                workbook_stem=stem,
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                is_minimized=_looks_minimized(x, y, width, height, on_screen),
+                is_document=stem is not None,
+                on_screen=on_screen,
+            )
+        )
+    return out
+
+
+def document_windows(*, enumerator: Enumerator | None = None) -> list[WindowInfo]:
+    """Document windows only, frontmost first."""
+    return [w for w in classify_windows(enumerator=enumerator) if w.is_document]
+
+
+def frontmost_document(*, enumerator: Enumerator | None = None) -> WindowInfo | None:
+    """The document window a menu command would currently be dispatched to."""
+    for w in document_windows(enumerator=enumerator):
+        if w.on_screen and not w.is_minimized:
+            return w
+    return None
+
+
+def find_document(stem: str, *, enumerator: Enumerator | None = None) -> WindowInfo | None:
+    """Locate a document window by workbook stem.
+
+    Matching is case-insensitive and treats ``_`` as a space. An exact match always
+    beats a substring match — without that rule ``Full_Feature_Check`` would be
+    ambiguous with ``Full_Feature_Check_v2``. Among equally good matches the
+    largest window wins, because duplicates are usually one restored window plus
+    one or more minimized Dock tiles, and the restored one is the useful target.
+    """
+    needle = normalise_stem(stem)
+    if not needle:
+        return None
+    docs = document_windows(enumerator=enumerator)
+    exact = [d for d in docs if normalise_stem(d.workbook_stem or "") == needle]
+    partial = [d for d in docs if needle in normalise_stem(d.workbook_stem or "")]
+    pool = exact or partial
+    if not pool:
+        return None
+    return max(pool, key=lambda d: (d.area, -d.id))
+
+
+def open_document_stems(*, enumerator: Enumerator | None = None) -> list[str]:
+    return [d.workbook_stem or "" for d in document_windows(enumerator=enumerator)]
+
+
+# --- real HID input --------------------------------------------------------
+
+
+def post_command_key(key: str, *, settle: float = 0.12) -> None:
+    """Post a real Command-<key> HID keystroke.
+
+    System Events' ``keystroke`` goes through the Accessibility layer that Qt
+    ignores (same failure mode as ``click``/``AXPress``), so the event is built and
+    posted through Quartz exactly like :func:`~.tableau_app.real_click`.
+    """
+    code = KEY_CODES.get(key.lower())
+    if code is None:
+        raise DesktopError(f"unsupported key {key!r}; known keys: {sorted(KEY_CODES)}")
+    import Quartz
+
+    source = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+    for down in (True, False):
+        event = Quartz.CGEventCreateKeyboardEvent(source, code, down)
+        Quartz.CGEventSetFlags(event, Quartz.kCGEventFlagMaskCommand)
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+        time.sleep(0.05)
+    time.sleep(settle)
+
+
+def activate_app() -> None:
+    """Bring the Tableau process forward. Required before `open -a` will restore."""
+    osascript(f'tell application "{PROCESS_NAME}" to activate')
+
+
+def open_with_tableau(path: Path) -> None:
+    """``open -a <Tableau> <file>`` — never shell=True, arguments always a list."""
+    app = find_app()
+    if not app:
+        raise DesktopError("Tableau Public is not installed")
+    proc = subprocess.run(
+        ["open", "-a", app, str(path)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise DesktopError(f"'open -a' failed for {path}: {proc.stderr.strip()[:300]}")
+
+
+def click_point(window: WindowInfo) -> tuple[int, int] | None:
+    """Where to click to raise ``window``, computed from its LIVE bounds.
+
+    Never a hardcoded screen position (MASTERPROMPT §4). Returns ``None`` when the
+    window offers nothing clickable — off-screen, or degenerate bounds.
+    """
+    if window.width < UNUSABLE_EDGE or window.height < UNUSABLE_EDGE:
+        return None
+    if not window.on_screen or window.x < 0 or window.y < 0:
+        return None
+    if window.is_minimized:
+        # An on-screen minimized window is its Dock tile; clicking the tile centre
+        # is what restores it.
+        return int(window.x + window.width / 2), int(window.y + window.height / 2)
+    return int(window.x + window.width / 2), int(window.y + TITLE_BAR_OFFSET_Y)
+
+
+# --- raising ---------------------------------------------------------------
+
+
+def unminimize_and_raise(
+    stem: str,
+    *,
+    file_path: Path | None = None,
+    enumerator: Enumerator | None = None,
+    clicker: Clicker | None = None,
+    activator: Activator | None = None,
+    opener: Opener | None = None,
+    sleeper: Sleeper | None = None,
+    timeout: float = 12.0,
+    poll: float = 1.0,
+) -> tuple[bool, str]:
+    """Restore and raise one workbook window. Returns ``(ok, message)``.
+
+    Two paths, in order of demonstrated reliability:
+
+    1. **Re-open the file** (used whenever ``file_path`` is known). Verified this
+       session: ``open -a "Tableau Public" <file>`` un-minimizes the existing
+       window and brings it forward *at full size*, but only when the app has been
+       activated first — without the ``activate`` the command is a no-op for an
+       already-open document. Tableau focuses the existing window rather than
+       loading a second copy.
+    2. **A real HID click** on the window, at a point computed from its live
+       bounds (Dock-tile centre when minimized, title bar when restored). This is
+       the documented brittle fallback and is used only when no file path is
+       available.
+
+    AX ``AXRaise`` is not attempted: Tableau exposes no windows to Accessibility.
+    """
+    sleep = sleeper or time.sleep
+    target = find_document(stem, enumerator=enumerator)
+    if target is None:
+        openv = open_document_stems(enumerator=enumerator)
+        return False, (
+            f"no Tableau document window matching {stem!r}. Currently open: {openv or 'none'}. "
+            f"Open the workbook first, or pass the exact stem shown in the window title."
+        )
+
+    already = frontmost_document(enumerator=enumerator)
+    if already is not None and already.id == target.id and not target.is_minimized:
+        return True, f"{target.title!r} is already the frontmost document window"
+
+    if file_path is not None:
+        path = Path(file_path)
+        if not path.exists():
+            return False, f"file_path does not exist: {path}"
+        try:
+            (activator or activate_app)()
+            sleep(0.6)
+            (opener or open_with_tableau)(path)
+        except DesktopError as exc:
+            return False, f"could not re-open {path.name} to raise its window: {exc}"
+        how = f"activate + open -a {path.name}"
+    else:
+        point = click_point(target)
+        if point is None:
+            return False, (
+                f"{target.title!r} is minimized off-screen (bounds "
+                f"{target.width:.0f}x{target.height:.0f} at {target.x:.0f},{target.y:.0f}) and "
+                f"offers no on-screen tile to click. Pass file_path=<path to the .twbx> so it "
+                f"can be restored with `open -a`, which is the reliable path."
+            )
+        try:
+            (activator or activate_app)()
+            sleep(0.6)
+            (clicker or real_click)(*point)
+        except DesktopError as exc:
+            return False, f"could not raise {target.title!r}: {exc}"
+        how = f"activate + HID click at {point} (from live bounds)"
+
+    attempts = max(1, int(timeout / poll))
+    for _ in range(attempts):
+        sleep(poll)
+        now = frontmost_document(enumerator=enumerator)
+        if now is not None and normalise_stem(now.workbook_stem or "") == normalise_stem(
+            target.workbook_stem or ""
+        ):
+            return True, f"raised {now.title!r} via {how}"
+    now = frontmost_document(enumerator=enumerator)
+    return False, (
+        f"tried to raise {target.title!r} via {how}, but the frontmost document is still "
+        f"{(now.title if now else None)!r} after {timeout:.0f}s"
+    )
+
+
+# --- save-prompt detection -------------------------------------------------
+
+
+def looks_like_save_prompt(window: WindowInfo) -> bool:
+    lowered = window.title.lower()
+    return any(hint in lowered for hint in SAVE_PROMPT_TITLE_HINTS)
+
+
+def detect_save_prompt(*, enumerator: Enumerator | None = None) -> WindowInfo | None:
+    """A visible window that looks like a "save changes?" question, if any."""
+    for w in classify_windows(enumerator=enumerator):
+        if not w.is_document and looks_like_save_prompt(w):
+            return w
+    return None
+
+
+# --- closing ---------------------------------------------------------------
+
+
+def close_document(
+    stem: str,
+    *,
+    save: bool = False,
+    file_path: Path | None = None,
+    enumerator: Enumerator | None = None,
+    clicker: Clicker | None = None,
+    key_sender: KeySender | None = None,
+    activator: Activator | None = None,
+    opener: Opener | None = None,
+    raiser: Raiser | None = None,
+    sleeper: Sleeper | None = None,
+    settle: float = 1.5,
+) -> tuple[bool, str]:
+    """Close exactly one workbook window. Returns ``(closed, message)``.
+
+    Guarantees, in the order they are enforced:
+
+    * **Refuses when the target is not open.** No target, no action.
+    * **Refuses without positive identification.** The window's title stem must
+      match ``stem`` *exactly* (after case/underscore normalisation). A substring
+      match is not enough: closing ``Full_Feature_Check_v2`` when asked for
+      ``Full_Feature_Check`` would be indistinguishable from working correctly.
+    * **Refuses while any save prompt is already showing**, because the close
+      keystroke would be delivered to that dialog instead.
+    * **Requires the target to be frontmost.** Command-W closes whatever document
+      is active, so the window is raised and re-verified first; if it cannot be
+      made frontmost, nothing is sent.
+    * **Never answers a "save changes?" prompt.** If one appears, the function
+      bails out and reports it, leaving the dialog on screen for a human. This is
+      the deliberate design decision: "Don't Save" destroys work irreversibly and
+      "Save" can overwrite a file the user did not intend to modify, and this code
+      cannot tell which workbook's unsaved state is precious. Guessing wrong is
+      unacceptable, so it does not guess. ``save=True`` is therefore rejected
+      outright rather than silently ignored — saving on the user's behalf is out
+      of scope for this module.
+    * **Never claims success it cannot prove.** Success requires the target window
+      to be absent from a fresh enumeration afterwards.
+    """
+    if save:
+        return False, (
+            "close_document(save=True) is not supported: this module never saves or discards "
+            "a workbook on the user's behalf. Save it in Tableau first, then close with "
+            "save=False."
+        )
+
+    sleep = sleeper or time.sleep
+    needle = normalise_stem(stem)
+    if not needle:
+        return False, "refusing to close: an empty workbook name matches nothing"
+
+    docs = document_windows(enumerator=enumerator)
+    exact = [d for d in docs if normalise_stem(d.workbook_stem or "") == needle]
+    if not exact:
+        near = [d.workbook_stem for d in docs if needle in normalise_stem(d.workbook_stem or "")]
+        if near:
+            return False, (
+                f"refusing to close: no window is titled exactly "
+                f"{DOC_TITLE_PREFIX}{stem!r}. Closest open windows are {near}. Pass the exact "
+                f"stem — a partial match could close the wrong workbook."
+            )
+        return False, (
+            f"no Tableau document window matching {stem!r}. "
+            f"Currently open: {[d.workbook_stem for d in docs] or 'none'}"
+        )
+    target = max(exact, key=lambda d: (d.area, -d.id))
+
+    prompt = detect_save_prompt(enumerator=enumerator)
+    if prompt is not None:
+        return False, (
+            f"refusing to act: Tableau is already showing {prompt.title!r}, and the close "
+            f"command would be delivered to that dialog. Answer it in Tableau, then re-run."
+        )
+
+    raise_fn = raiser or (
+        lambda s: unminimize_and_raise(
+            s,
+            file_path=file_path,
+            enumerator=enumerator,
+            clicker=clicker,
+            activator=activator,
+            opener=opener,
+            sleeper=sleeper,
+        )
+    )
+    raised, why = raise_fn(target.workbook_stem or stem)
+    if not raised:
+        return False, f"refusing to close {target.title!r}: could not make it frontmost ({why})"
+
+    front = frontmost_document(enumerator=enumerator)
+    if front is None or normalise_stem(front.workbook_stem or "") != needle:
+        return False, (
+            f"SAFETY ABORT: frontmost document is {(front.title if front else None)!r}, not "
+            f"{target.title!r}. Command-W would close the wrong workbook."
+        )
+
+    before = {w.id for w in classify_windows(enumerator=enumerator)}
+    try:
+        (key_sender or post_command_key)("w")
+    except DesktopError as exc:
+        return False, f"could not send Command-W to {target.title!r}: {exc}"
+    sleep(settle)
+
+    after = classify_windows(enumerator=enumerator)
+    prompt = detect_save_prompt(enumerator=lambda: [w.to_dict() for w in after])
+    if prompt is not None:
+        return False, (
+            f"BAILED OUT: Tableau is asking {prompt.title!r} about {target.workbook_stem!r}. "
+            f"This server will not answer a save prompt — 'Don't Save' would destroy unsaved "
+            f"work. The prompt is still on screen; answer it in Tableau."
+        )
+
+    still_open = [
+        w for w in after if w.is_document and normalise_stem(w.workbook_stem or "") == needle
+    ]
+    if not still_open:
+        return True, f"closed {target.title!r}"
+
+    new_dialogs = [w.title for w in after if not w.is_document and w.id not in before]
+    if new_dialogs:
+        return False, (
+            f"BAILED OUT: {target.title!r} is still open and Tableau raised {new_dialogs}. "
+            f"That is very likely an unsaved-changes prompt; this server will not answer it. "
+            f"Resolve the dialog in Tableau, then re-run."
+        )
+    return False, (
+        f"Command-W was sent but {target.title!r} is still open. Nothing was forced. Close it "
+        f"in Tableau, or check that Tableau has Accessibility permission."
+    )
+
+
+def close_all_generated(
+    prefixes: Sequence[str],
+    *,
+    dry_run: bool = True,
+    enumerator: Enumerator | None = None,
+    clicker: Clicker | None = None,
+    key_sender: KeySender | None = None,
+    activator: Activator | None = None,
+    opener: Opener | None = None,
+    raiser: Raiser | None = None,
+    sleeper: Sleeper | None = None,
+) -> dict:
+    """Close only the throwaway workbooks whose stem starts with a given prefix.
+
+    Intended for test debris (``Probe``, ``Full_Feature_Check``, ``NoFilter_Probe``).
+    A window is a candidate **only** if its normalised stem starts with a
+    normalised prefix — never on a substring or fuzzy match — so a workbook the
+    caller did not name can never be selected.
+
+    ``dry_run`` defaults to True and reports what *would* be closed without
+    sending a single event: nothing calls the clicker or the key sender on that
+    path. Pass ``dry_run=False`` only after reading the ``would_close`` list.
+    """
+    cleaned = [p for p in prefixes if p and p.strip()]
+    if not cleaned:
+        raise ValueError("at least one non-empty prefix is required; refusing to match everything")
+    normalised: list[str] = []
+    for prefix in cleaned:
+        norm = normalise_stem(prefix)
+        if len(norm) < MIN_PREFIX_LEN:
+            raise ValueError(
+                f"prefix {prefix!r} is too short (minimum {MIN_PREFIX_LEN} characters after "
+                f"normalisation); a short prefix risks matching a real workbook"
+            )
+        normalised.append(norm)
+
+    docs = document_windows(enumerator=enumerator)
+    matched: list[WindowInfo] = []
+    skipped: list[dict] = []
+    for doc in docs:
+        stem_norm = normalise_stem(doc.workbook_stem or "")
+        hit = next((p for p in normalised if stem_norm.startswith(p)), None)
+        if hit is None:
+            skipped.append({"stem": doc.workbook_stem, "reason": "no prefix matched"})
+        else:
+            matched.append(doc)
+
+    result: dict = {
+        "dry_run": dry_run,
+        "prefixes": list(cleaned),
+        "would_close": [w.workbook_stem for w in matched],
+        "matched": [w.to_dict() for w in matched],
+        "skipped": skipped,
+        "closed": [],
+        "failed": [],
+        "notes": [],
+    }
+    if dry_run:
+        result["notes"].append(
+            f"dry run: {len(matched)} window(s) would be closed, "
+            f"{len(skipped)} left untouched. No events were sent. "
+            f"Re-run with dry_run=False to close them."
+        )
+        return result
+
+    # De-duplicate by stem: one workbook can own several windows (a Dock tile and a
+    # restored window), and each stem is closed once.
+    seen: set[str] = set()
+    for window in matched:
+        stem = window.workbook_stem or ""
+        key = normalise_stem(stem)
+        if key in seen:
+            continue
+        seen.add(key)
+        ok, message = close_document(
+            stem,
+            enumerator=enumerator,
+            clicker=clicker,
+            key_sender=key_sender,
+            activator=activator,
+            opener=opener,
+            raiser=raiser,
+            sleeper=sleeper,
+        )
+        if ok:
+            result["closed"].append({"stem": stem, "message": message})
+        else:
+            result["failed"].append({"stem": stem, "reason": message})
+    result["notes"].append(
+        f"closed {len(result['closed'])} of {len(seen)} matched workbook(s); "
+        f"{len(result['failed'])} refused or bailed out."
+    )
+    return result

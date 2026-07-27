@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # noqa: S405 - hardened below via safe_parse
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..models.spec import WorkbookSpec
 from ..security.paths import PathSecurityError, safe_archive_name
+
+ZONE_GRID = 100000
+
+# Elements Tableau writes only when publishing, plus one attribute that appears
+# in no fixture at any document version. None may ever reach a generated file.
+_PUBLISHED_ONLY_TAGS = ("repository-location", "simple-id", "devicelayouts", "devicelayout")
+_FORBIDDEN_ZONE_ATTRS = ("type-v2",)
 
 
 @dataclass
@@ -21,19 +28,363 @@ class Issue:
         return {"severity": self.severity, "code": self.code, "message": self.message}
 
 
-def validate_generated(
-    twb_path: Path, twbx_path: Path | None, spec: WorkbookSpec
-) -> list[Issue]:
+def _zone_box(zone: ET.Element) -> dict[str, int] | None:
+    """Parse a zone's ``x/y/w/h`` grid geometry, or None if it is not intact."""
+    box: dict[str, int] = {}
+    for attr in ("x", "y", "w", "h"):
+        raw = zone.get(attr)
+        if raw is None:
+            return None
+        try:
+            box[attr] = int(raw)
+        except ValueError:
+            return None
+    return box
+
+
+def _check_zone(
+    zone: ET.Element,
+    dash_name: str,
+    ws_names: set[str],
+    seen_ids: set[str],
+    issues: list[Issue],
+) -> None:
+    """Recursively check one zone subtree of a dashboard."""
+    where = f"dashboard {dash_name!r}"
+
+    for attr in _FORBIDDEN_ZONE_ATTRS:
+        if zone.get(attr) is not None:
+            issues.append(
+                Issue(
+                    "error",
+                    "published_only_element",
+                    f"{where}: zone carries @{attr}, which appears in no fixture at any "
+                    f"document version and must not be emitted",
+                )
+            )
+
+    zone_id = zone.get("id")
+    if not zone_id or not zone_id.isdigit():
+        issues.append(
+            Issue(
+                "error",
+                "bad_zone_id",
+                f"{where}: zone id {zone_id!r} is not a small positive integer; Tableau "
+                f"uses integer zone ids, not hashed identifiers",
+            )
+        )
+    elif zone_id in seen_ids:
+        issues.append(Issue("error", "dup_zone_id", f"{where}: duplicate zone id {zone_id!r}"))
+    else:
+        seen_ids.add(zone_id)
+
+    box = _zone_box(zone)
+    if box is None:
+        issues.append(
+            Issue(
+                "error",
+                "zone_geometry",
+                f"{where}: zone {zone_id!r} is missing or has non-integer x/y/w/h",
+            )
+        )
+    else:
+        for attr, value in box.items():
+            if not 0 <= value <= ZONE_GRID:
+                issues.append(
+                    Issue(
+                        "error",
+                        "zone_out_of_range",
+                        f"{where}: zone {zone_id!r} has @{attr}={value}, outside the "
+                        f"0..{ZONE_GRID} normalised grid",
+                    )
+                )
+        for start, size, axis in ((box["x"], box["w"], "x+w"), (box["y"], box["h"], "y+h")):
+            if start + size > ZONE_GRID:
+                issues.append(
+                    Issue(
+                        "error",
+                        "zone_out_of_range",
+                        f"{where}: zone {zone_id!r} extends past the grid ({axis}="
+                        f"{start + size} > {ZONE_GRID})",
+                    )
+                )
+
+    # A zone with @name and NO @type renders a worksheet, and the link is a bare
+    # name string: an unresolvable name loads fine and renders an empty box, so
+    # this check is the only thing that catches a typo or a rename.
+    if zone.get("type") is None and zone.get("name") is not None:
+        name = zone.get("name")
+        if name not in ws_names:
+            issues.append(
+                Issue(
+                    "error",
+                    "unresolved_zone_worksheet",
+                    f"{where}: zone {zone_id!r} references worksheet {name!r}, which does "
+                    f"not exist in <worksheets>. Tableau would render an empty box "
+                    f"without any error. Available: {sorted(ws_names)}",
+                )
+            )
+
+    children = [c for c in zone if c.tag == "zone"]
+    tags = [c.tag for c in zone]
+    if "zone-style" in tags and tags[-1] != "zone-style":
+        issues.append(
+            Issue(
+                "error",
+                "zone_child_order",
+                f"{where}: zone {zone_id!r} has <zone-style> before its nested zones; "
+                f"zone-style is last in every fixture zone that has one",
+            )
+        )
+
+    # Siblings inside a layout container must tile the parent's extent exactly.
+    if zone.get("type") == "layout-flow" and children and box is not None:
+        vertical = zone.get("param") == "vert"
+        start_key, size_key = ("y", "h") if vertical else ("x", "w")
+        cursor = box[start_key]
+        ok = True
+        for child in children:
+            cbox = _zone_box(child)
+            if cbox is None:
+                ok = False
+                break
+            if cbox[start_key] != cursor:
+                ok = False
+                break
+            cursor += cbox[size_key]
+        if not ok or cursor != box[start_key] + box[size_key]:
+            issues.append(
+                Issue(
+                    "error",
+                    "zone_tiling",
+                    f"{where}: children of layout-flow zone {zone_id!r} do not tile its "
+                    f"{size_key} extent exactly; the dashboard would be clipped or "
+                    f"overlapping rather than fail to load",
+                )
+            )
+
+    for child in children:
+        _check_zone(child, dash_name, ws_names, seen_ids, issues)
+
+
+def _check_dashboards(root: ET.Element, spec: WorkbookSpec, ws_names: set[str]) -> list[Issue]:
+    """Layer-2 checks for the EXPERIMENTAL ``<dashboards>`` section.
+
+    These are structural only. They cannot tell you whether Tableau Public
+    2026.2.0 will actually open the file — nothing in this project can, until a
+    generated dashboard is loaded by hand.
+    """
+    issues: list[Issue] = []
+    db_nodes = root.find("dashboards")
+
+    if not spec.dashboards:
+        if db_nodes is not None:
+            issues.append(
+                Issue(
+                    "error",
+                    "unexpected_dashboards",
+                    "<dashboards> is present but the spec requested no dashboards",
+                )
+            )
+        return issues
+
+    if db_nodes is None or not len(db_nodes):
+        issues.append(
+            Issue(
+                "error",
+                "missing_dashboards",
+                f"spec requested {len(spec.dashboards)} dashboard(s) but the file has no "
+                f"<dashboard> elements",
+            )
+        )
+        return issues
+
+    # <dashboards> must sit between <worksheets> and <windows>.
+    order = [c.tag for c in root]
+    if "worksheets" in order and "windows" in order:
+        if not order.index("worksheets") < order.index("dashboards") < order.index("windows"):
+            issues.append(
+                Issue(
+                    "error",
+                    "dashboards_position",
+                    f"<dashboards> must sit between <worksheets> and <windows>; got {order}",
+                )
+            )
+
+    seen: set[str] = set()
+    for dash in db_nodes:
+        name = dash.get("name") or ""
+        if name in seen:
+            issues.append(Issue("error", "dup_dashboard", f"duplicate dashboard name: {name!r}"))
+        seen.add(name)
+
+        # Tableau's loader enforces a DTD content model: layout-options?, style,
+        # size, datasources?, datasource-dependencies*, zones.
+        allowed = [
+            "layout-options",
+            "style",
+            "size",
+            "datasources",
+            "datasource-dependencies",
+            "zones",
+        ]
+        tags = [c.tag for c in dash]
+        unknown = [t for t in tags if t not in allowed]
+        if unknown:
+            issues.append(
+                Issue(
+                    "error",
+                    "dashboard_child_order",
+                    f"dashboard {name!r} contains unsupported children {unknown}",
+                )
+            )
+        else:
+            ranks = [allowed.index(t) for t in tags]
+            if ranks != sorted(ranks):
+                issues.append(
+                    Issue(
+                        "error",
+                        "dashboard_child_order",
+                        f"dashboard {name!r} children {tags} are misordered; Tableau's "
+                        f"content model requires {allowed}",
+                    )
+                )
+        for required in ("style", "size", "zones"):
+            if dash.find(required) is None:
+                issues.append(
+                    Issue(
+                        "error",
+                        "dashboard_child_order",
+                        f"dashboard {name!r} is missing required <{required}>",
+                    )
+                )
+
+        # A title needs both the text and a zone to display it; either alone is a
+        # silent no-op.
+        has_title_text = dash.find("layout-options/title") is not None
+        has_title_zone = any(z.get("type") == "title" for z in dash.iter("zone"))
+        if has_title_text != has_title_zone:
+            half = (
+                "title text but no type='title' zone"
+                if has_title_text
+                else "a type='title' zone but no title text"
+            )
+            issues.append(
+                Issue(
+                    "error",
+                    "dashboard_title_halfway",
+                    f"dashboard {name!r} has {half}; a dashboard title needs both pieces "
+                    f"or it renders nothing",
+                )
+            )
+
+        zones = dash.find("zones")
+        if zones is None or len(zones) != 1:
+            issues.append(
+                Issue(
+                    "error",
+                    "dashboard_root_zone",
+                    f"dashboard {name!r} must contain exactly one root <zone>, "
+                    f"found {0 if zones is None else len(zones)}",
+                )
+            )
+        else:
+            root_zone = zones[0]
+            if root_zone.get("type") != "layout-basic":
+                issues.append(
+                    Issue(
+                        "error",
+                        "dashboard_root_zone",
+                        f"dashboard {name!r}: root zone type is "
+                        f"{root_zone.get('type')!r}, expected 'layout-basic'",
+                    )
+                )
+            _check_zone(root_zone, name, ws_names, set(), issues)
+
+    expected = {d.name for d in spec.dashboards}
+    if seen != expected:
+        issues.append(
+            Issue(
+                "error",
+                "dashboard_mismatch",
+                f"dashboards in file {sorted(seen)} do not match spec {sorted(expected)}",
+            )
+        )
+
+    # Every dashboard needs a <window class='dashboard'> and, unlike a worksheet
+    # window, must not carry <cards>.
+    windows = root.find("windows")
+    win_by_name = {
+        w.get("name"): w
+        for w in (windows if windows is not None else [])
+        if w.get("class") == "dashboard"
+    }
+    for dash_name in sorted(expected):
+        win = win_by_name.get(dash_name)
+        if win is None:
+            issues.append(
+                Issue(
+                    "error",
+                    "missing_dashboard_window",
+                    f"dashboard {dash_name!r} has no <window class='dashboard'>; Tableau "
+                    f"would not show a tab for it",
+                )
+            )
+            continue
+        if win.find("cards") is not None:
+            issues.append(
+                Issue(
+                    "error",
+                    "dashboard_window_has_cards",
+                    f"dashboard window {dash_name!r} contains <cards>, which belongs only "
+                    f"to worksheet windows",
+                )
+            )
+        for vp in win.iter("viewpoint"):
+            if vp.get("name") not in ws_names:
+                issues.append(
+                    Issue(
+                        "error",
+                        "unresolved_zone_worksheet",
+                        f"dashboard window {dash_name!r} has a viewpoint for unknown "
+                        f"worksheet {vp.get('name')!r}",
+                    )
+                )
+
+    return issues
+
+
+def _check_published_only(root: ET.Element) -> list[Issue]:
+    """Publish-server metadata must never appear in a generated file."""
+    issues: list[Issue] = []
+    for tag in _PUBLISHED_ONLY_TAGS:
+        if root.find(f".//{tag}") is not None:
+            issues.append(
+                Issue(
+                    "error",
+                    "published_only_element",
+                    f"<{tag}> is publish-server metadata and must not be generated",
+                )
+            )
+    return issues
+
+
+def validate_generated(twb_path: Path, twbx_path: Path | None, spec: WorkbookSpec) -> list[Issue]:
     issues: list[Issue] = []
 
     # --- .twb is well-formed XML with the required skeleton ----------------
     try:
-        root = ET.parse(twb_path).getroot()
+        # ElementTree does not expand external entities or resolve DTDs, so it is
+        # not vulnerable to XXE/billion-laughs the way a validating parser is.
+        # Input here is either our own output or a user-selected local file.
+        root = ET.parse(twb_path).getroot()  # noqa: S314
     except ET.ParseError as exc:
         return [Issue("error", "xml_malformed", f".twb is not well-formed XML: {exc}")]
 
     if root.tag != "workbook":
-        issues.append(Issue("error", "bad_root", f"root element is <{root.tag}>, expected <workbook>"))
+        issues.append(
+            Issue("error", "bad_root", f"root element is <{root.tag}>, expected <workbook>")
+        )
     for attr in ("version", "source-build", "source-platform"):
         if not root.get(attr):
             issues.append(Issue("error", "missing_attr", f"workbook is missing @{attr}"))
@@ -106,6 +457,11 @@ def validate_generated(
                             )
                         )
 
+    # --- dashboards (EXPERIMENTAL) ----------------------------------------
+    file_ws_names = {w.get("name") or "" for w in (ws_nodes if ws_nodes is not None else [])}
+    issues.extend(_check_dashboards(root, spec, file_ws_names))
+    issues.extend(_check_published_only(root))
+
     # --- .twbx archive contents -------------------------------------------
     if twbx_path is not None:
         if not zipfile.is_zipfile(twbx_path):
@@ -122,7 +478,11 @@ def validate_generated(
             twbs = [n for n in names if n.lower().endswith(".twb")]
             if len(twbs) != 1:
                 issues.append(
-                    Issue("error", "twb_count", f"expected exactly one .twb in package, found {len(twbs)}")
+                    Issue(
+                        "error",
+                        "twb_count",
+                        f"expected exactly one .twb in package, found {len(twbs)}",
+                    )
                 )
 
             expected = {ds.path.name for ds in spec.data_sources}
@@ -131,7 +491,9 @@ def validate_generated(
             missing = expected - found
             if missing:
                 issues.append(
-                    Issue("error", "missing_data", f"package is missing data files: {sorted(missing)}")
+                    Issue(
+                        "error", "missing_data", f"package is missing data files: {sorted(missing)}"
+                    )
                 )
             # Tableau Public requires every data source to be extract-backed.
             for ds in spec.data_sources:
@@ -145,14 +507,12 @@ def validate_generated(
                         )
                     )
 
-            unexpected = [
-                n
-                for n in names
-                if not n.lower().endswith((".twb", ".csv", ".hyper"))
-            ]
+            unexpected = [n for n in names if not n.lower().endswith((".twb", ".csv", ".hyper"))]
             if unexpected:
                 issues.append(
-                    Issue("warning", "unexpected_entry", f"unexpected package entries: {unexpected}")
+                    Issue(
+                        "warning", "unexpected_entry", f"unexpected package entries: {unexpected}"
+                    )
                 )
 
     return issues

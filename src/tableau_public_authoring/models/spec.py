@@ -3,16 +3,24 @@
 Layer 1 of the validation stack (§14). JSON Schema handles structural validation;
 this module handles semantics that a schema cannot express: cross-references
 between worksheets and data sources, field existence, and encoding compatibility.
+
+**Dashboards are EXPERIMENTAL / UNVERIFIED.** Every other part of this model
+describes XML that has been generated, opened in Tableau Public 2026.2.0 and
+rendered. The ``dashboards`` section does not: it was reverse-engineered from
+published fixtures at document version 18.1 written by older Tableau builds
+(docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md), and no generated dashboard has
+ever been loaded by Tableau. See :class:`Dashboard`.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field as dc_field
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
-from ..compiler.fields import Field, VALID_DATATYPES, infer_fields, role_and_type
+from ..compiler.fields import VALID_DATATYPES, Field, infer_fields, role_and_type
 from ..compiler.ids import calculation_name
 from ..security.paths import resolve_input_file, resolve_output_dir
 
@@ -30,7 +38,31 @@ SUPPORTED_TEMPLATES = (
     "circle",
 )
 
+# How a worksheet fills its canvas. Omitting it uses Tableau's "Standard" fit,
+# which draws a small viz tucked into the top-left corner.
+FIT_MODES = ("standard", "fit_width", "fit_height", "entire_view")
+
 AGGREGATIONS = ("Sum", "Avg", "Min", "Max", "Count", "CountD", "None", "Attribute")
+
+# ---------------------------------------------------------------- dashboards
+# EXPERIMENTAL / UNVERIFIED. Dashboard support is derived from forensic analysis
+# of published fixtures at document version 18.1 (see
+# docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md). No fixture written by the target
+# build 2026.2.0 was available, so no generated dashboard has ever been opened in
+# Tableau. Everything below compiles and validates structurally; none of it is
+# confirmed to load. Do not promote it in CAPABILITY_BOUNDARY.md until it has.
+DASHBOARD_DIRECTIONS = ("vertical", "horizontal")
+
+# Only the two sizing modes the fixtures actually show for a whole dashboard.
+# 'vscroll' was seen only on a device layout and 'Range' was never serialised in
+# any fixture, so neither is offered.
+DASHBOARD_SIZING_MODES = ("fixed", "automatic")
+
+DASHBOARD_DEFAULT_WIDTH = 1200
+DASHBOARD_DEFAULT_HEIGHT = 800
+DASHBOARD_MIN_PX = 100
+DASHBOARD_MAX_PX = 10000
+DASHBOARD_MAX_ZONES = 20
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _\-.,()/&'%:+#]{0,119}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -113,10 +145,83 @@ class Worksheet:
     color: EncodingRef | None = None
     size: EncodingRef | None = None
     label: EncodingRef | None = None
+    # Tableau's Detail shelf, compiled to <lod>. A list, because Tableau accepts
+    # several fields there. Each dimension on Detail adds a grouping key, which
+    # is how a sheet gets one mark per entity instead of one mark per Color
+    # value. See compiler/workbook.py::_build_worksheet.
+    detail: list[EncodingRef] = dc_field(default_factory=list)
     tooltips: list[EncodingRef] = dc_field(default_factory=list)
     filters: list[str] = dc_field(default_factory=list)
     title: str | None = None
     subtitle: str | None = None
+    fit: str | None = None
+
+
+@dataclass
+class DashboardZone:
+    """One worksheet placed on a dashboard.
+
+    EXPERIMENTAL / UNVERIFIED — see :class:`Dashboard`.
+
+    The compiled zone references its worksheet by **bare name string** (there is
+    no id-based link in the ``.twb`` format), so ``worksheet`` must match a
+    :class:`Worksheet` name exactly. A mismatch produces a file that loads
+    without complaint and renders an empty box, which is why the reference is
+    checked in layer 1 here *and* again in layer 2
+    (``validation.structure.unresolved_zone_worksheet``).
+    """
+
+    worksheet: str
+    show_title: bool = True
+
+    @classmethod
+    def parse(cls, raw: Any, ctx: str) -> DashboardZone:
+        if isinstance(raw, str):
+            return cls(worksheet=raw)
+        if isinstance(raw, dict):
+            unknown = set(raw) - {"worksheet", "show_title"}
+            _require(not unknown, f"{ctx}: unknown keys {sorted(unknown)}")
+            _require("worksheet" in raw, f"{ctx}: missing 'worksheet'")
+            name = raw["worksheet"]
+            _require(isinstance(name, str) and bool(name), f"{ctx}.worksheet must be a string")
+            show_title = raw.get("show_title", True)
+            _require(isinstance(show_title, bool), f"{ctx}.show_title must be a boolean")
+            return cls(worksheet=name, show_title=show_title)
+        raise SpecError(f"{ctx}: must be a worksheet name or an object with 'worksheet'")
+
+
+@dataclass
+class Dashboard:
+    """A dashboard: a title plus worksheets stacked in one layout container.
+
+    **EXPERIMENTAL / UNVERIFIED.** The XML this compiles to was reverse-engineered
+    from published workbooks at document version 18.1 written by Tableau builds
+    2019.4.3-2023.1.0 (docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md). The build this
+    project targets is 2026.2.0, and **no generated dashboard has been opened in
+    Tableau**. Treat a compiled dashboard as a well-evidenced hypothesis, not a
+    supported feature: it may fail to load. The single largest unknown is whether
+    2026.2.0 requires a ``type-v2`` attribute on zones — the attribute appears in
+    zero fixtures across document versions 8.3/10.4/18.1, so the compiler emits
+    plain ``type``.
+
+    Scope is deliberately the smallest thing the fixtures fully evidence: a fixed
+    or automatic canvas, an optional title, and worksheets tiled in one
+    horizontal or vertical container. Filter cards, colour legends, highlighters,
+    parameter controls, images, floating zones, device layouts and dashboard
+    actions are all understood (they are catalogued in the analysis) but are not
+    generated.
+    """
+
+    name: str
+    worksheets: list[DashboardZone]
+    direction: str = "vertical"
+    title: str | None = None
+    width: int = DASHBOARD_DEFAULT_WIDTH
+    height: int = DASHBOARD_DEFAULT_HEIGHT
+    sizing_mode: str = "fixed"
+
+    def worksheet_names(self) -> list[str]:
+        return [z.worksheet for z in self.worksheets]
 
 
 @dataclass
@@ -143,6 +248,7 @@ class WorkbookSpec:
     data_sources: list[DataSourceSpec]
     worksheets: list[Worksheet]
     output_dir: Path
+    dashboards: list[Dashboard] = dc_field(default_factory=list)
     package_twbx: bool = True
     spec_version: str = SPEC_VERSION
 
@@ -228,7 +334,8 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         _require(ds_id in ds_by_id, f"{ctx}: unknown data_source {ds_id!r}")
         formula = c.get("formula", "")
         _require(
-            isinstance(formula, str) and formula.strip(), f"{ctx}.formula must be a non-empty string"
+            isinstance(formula, str) and formula.strip(),
+            f"{ctx}.formula must be a non-empty string",
         )
         datatype = c.get("datatype", "string")
         _require(
@@ -264,8 +371,19 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         ctx = f"worksheets[{i}]"
         _require(isinstance(w, dict), f"{ctx} must be an object")
         unknown = set(w) - {
-            "name", "template", "data_source", "rows", "columns",
-            "color", "size", "label", "tooltips", "filters", "title", "subtitle",
+            "name",
+            "template",
+            "data_source",
+            "rows",
+            "columns",
+            "color",
+            "size",
+            "label",
+            "detail",
+            "tooltips",
+            "filters",
+            "title",
+            "subtitle",
         }
         _require(not unknown, f"{ctx}: unknown keys {sorted(unknown)}")
 
@@ -283,21 +401,22 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         ds = ds_by_id[ds_id]
         fmap = ds.field_map()
 
-        def _refs(key: str, ws_ctx: str = ctx) -> list[EncodingRef]:
-            vals = w.get(key) or []
+        def _refs(key: str, _w: dict = w, ws_ctx: str = ctx) -> list[EncodingRef]:
+            vals = _w.get(key) or []
             _require(isinstance(vals, list), f"{ws_ctx}.{key} must be an array")
             return [EncodingRef.parse(v, f"{ws_ctx}.{key}[{j}]") for j, v in enumerate(vals)]
 
-        def _ref(key: str, ws_ctx: str = ctx) -> EncodingRef | None:
-            if key not in w or w[key] is None:
+        def _ref(key: str, _w: dict = w, ws_ctx: str = ctx) -> EncodingRef | None:
+            if key not in _w or _w[key] is None:
                 return None
-            return EncodingRef.parse(w[key], f"{ws_ctx}.{key}")
+            return EncodingRef.parse(_w[key], f"{ws_ctx}.{key}")
 
         rows = _refs("rows")
         columns = _refs("columns")
         color = _ref("color")
         size = _ref("size")
         label = _ref("label")
+        detail = _refs("detail")
         tooltips = _refs("tooltips")
 
         filters = w.get("filters") or []
@@ -307,8 +426,12 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
 
         # every referenced field must exist in the worksheet's data source
         for label_, refs in (
-            ("rows", rows), ("columns", columns), ("tooltips", tooltips),
-            ("color", [color] if color else []), ("size", [size] if size else []),
+            ("rows", rows),
+            ("columns", columns),
+            ("detail", detail),
+            ("tooltips", tooltips),
+            ("color", [color] if color else []),
+            ("size", [size] if size else []),
             ("label", [label] if label else []),
         ):
             for r in refs:
@@ -322,6 +445,24 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
                 f in fmap,
                 f"{ctx}.filters: field {f!r} does not exist in data source {ds_id!r}",
             )
+
+        # Detail is a set of grouping keys, so listing a field twice is always a
+        # mistake: the second copy cannot subdivide the marks any further, and
+        # the compiler would collapse both into one <lod> anyway.
+        seen_detail: set[str] = set()
+        for r in detail:
+            _require(
+                r.field not in seen_detail,
+                f"{ctx}.detail: field {r.field!r} appears more than once; a field can be "
+                f"placed on Detail at most once",
+            )
+            seen_detail.add(r.field)
+
+        fit = w.get("fit")
+        _require(
+            fit is None or fit in FIT_MODES,
+            f"{ctx}.fit must be one of {sorted(FIT_MODES)}, got {fit!r}",
+        )
 
         need_rows, need_cols = _mark_requirements(template)
         if need_rows:
@@ -351,19 +492,138 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
 
         worksheets.append(
             Worksheet(
-                name=name, template=template, data_source=ds_id,
-                rows=rows, columns=columns, color=color, size=size, label=label,
-                tooltips=tooltips, filters=list(filters),
-                title=w.get("title"), subtitle=w.get("subtitle"),
+                name=name,
+                template=template,
+                data_source=ds_id,
+                rows=rows,
+                columns=columns,
+                color=color,
+                size=size,
+                label=label,
+                detail=detail,
+                tooltips=tooltips,
+                filters=list(filters),
+                title=w.get("title"),
+                subtitle=w.get("subtitle"),
             )
         )
 
-    dashboards = raw.get("dashboards") or []
-    _require(
-        not dashboards,
-        "dashboards are not supported in v0.1 — see docs/architecture/CAPABILITY_BOUNDARY.md. "
-        "Pass an empty array or omit the key.",
-    )
+    # ---- dashboards -------------------------------------------------------
+    # EXPERIMENTAL / UNVERIFIED — see the Dashboard docstring. Parsed and
+    # compiled, but never confirmed to open in Tableau Public 2026.2.0.
+    raw_db = raw.get("dashboards") or []
+    _require(isinstance(raw_db, list), "'dashboards' must be an array")
+    dashboards: list[Dashboard] = []
+    seen_db: set[str] = set()
+
+    for i, d in enumerate(raw_db):
+        ctx = f"dashboards[{i}]"
+        _require(isinstance(d, dict), f"{ctx} must be an object")
+        unknown = set(d) - {
+            "name",
+            "title",
+            "direction",
+            "sizing_mode",
+            "width",
+            "height",
+            "worksheets",
+        }
+        _require(not unknown, f"{ctx}: unknown keys {sorted(unknown)}")
+
+        name = _check_name(d.get("name", ""), f"{ctx}.name")
+        _require(name not in seen_db, f"{ctx}: duplicate dashboard name {name!r}")
+        _require(
+            name not in seen_ws,
+            f"{ctx}: dashboard name {name!r} collides with a worksheet name; both are "
+            f"registered in <windows> by name and must be distinct",
+        )
+        seen_db.add(name)
+
+        direction = d.get("direction", "vertical")
+        _require(
+            direction in DASHBOARD_DIRECTIONS,
+            f"{ctx}: unsupported direction {direction!r}; expected one of "
+            f"{list(DASHBOARD_DIRECTIONS)}",
+        )
+
+        sizing_mode = d.get("sizing_mode", "fixed")
+        _require(
+            sizing_mode in DASHBOARD_SIZING_MODES,
+            f"{ctx}: unsupported sizing_mode {sizing_mode!r}; expected one of "
+            f"{list(DASHBOARD_SIZING_MODES)}",
+        )
+
+        title = d.get("title")
+        if title is not None:
+            _require(
+                isinstance(title, str) and bool(title.strip()),
+                f"{ctx}.title must be a non-empty string",
+            )
+            _require(len(title) <= 300, f"{ctx}.title must be 300 characters or fewer")
+
+        # 'fixed' declares a pixel canvas; 'automatic' fits the window and has no
+        # bounds at all, so accepting a size there would silently discard it.
+        if sizing_mode == "automatic":
+            for key in ("width", "height"):
+                _require(
+                    key not in d,
+                    f"{ctx}.{key} cannot be set when sizing_mode is 'automatic'; "
+                    f"an automatic dashboard has no declared canvas size",
+                )
+        width = d.get("width", DASHBOARD_DEFAULT_WIDTH)
+        height = d.get("height", DASHBOARD_DEFAULT_HEIGHT)
+        for key, value in (("width", width), ("height", height)):
+            _require(
+                isinstance(value, int) and not isinstance(value, bool),
+                f"{ctx}.{key} must be an integer number of pixels",
+            )
+            _require(
+                DASHBOARD_MIN_PX <= value <= DASHBOARD_MAX_PX,
+                f"{ctx}.{key} must be between {DASHBOARD_MIN_PX} and {DASHBOARD_MAX_PX} "
+                f"pixels, got {value}",
+            )
+
+        raw_zones = d.get("worksheets") or []
+        _require(
+            isinstance(raw_zones, list) and bool(raw_zones),
+            f"{ctx}.worksheets must be a non-empty array of worksheet names",
+        )
+        _require(
+            len(raw_zones) <= DASHBOARD_MAX_ZONES,
+            f"{ctx}.worksheets: at most {DASHBOARD_MAX_ZONES} worksheets per dashboard, "
+            f"got {len(raw_zones)}",
+        )
+        zones: list[DashboardZone] = []
+        placed: set[str] = set()
+        for j, z in enumerate(raw_zones):
+            zone_ctx = f"{ctx}.worksheets[{j}]"
+            zone = DashboardZone.parse(z, zone_ctx)
+            # The zone->worksheet link is a bare name string with no id behind it,
+            # so an unresolvable name yields an empty box, not an error (§4.4).
+            _require(
+                zone.worksheet in seen_ws,
+                f"{zone_ctx}: worksheet {zone.worksheet!r} does not exist. "
+                f"Available: {sorted(seen_ws)}",
+            )
+            _require(
+                zone.worksheet not in placed,
+                f"{zone_ctx}: worksheet {zone.worksheet!r} is already placed on dashboard "
+                f"{name!r}; a worksheet can appear at most once per dashboard",
+            )
+            placed.add(zone.worksheet)
+            zones.append(zone)
+
+        dashboards.append(
+            Dashboard(
+                name=name,
+                worksheets=zones,
+                direction=direction,
+                title=title,
+                width=width,
+                height=height,
+                sizing_mode=sizing_mode,
+            )
+        )
 
     out = raw.get("output") or {}
     _require(isinstance(out, dict), "'output' must be an object")
@@ -380,5 +640,6 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         data_sources=data_sources,
         worksheets=worksheets,
         output_dir=out_dir,
+        dashboards=dashboards,
         package_twbx=package,
     )

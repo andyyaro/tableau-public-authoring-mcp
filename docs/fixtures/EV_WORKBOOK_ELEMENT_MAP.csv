@@ -1,0 +1,23 @@
+element,classification,parameterized,notes
+"workbook/@version, @source-build, @source-platform",version-specific boilerplate,no,pinned to installed build 2026.2.0 / doc 18.1
+preferences,invariant boilerplate,no,emitted with two static preferences
+datasource/@name (federated.*),generated id,yes,"SHA-256 of (workbook name, ds id)"
+named-connection/@name (textscan.*),generated id,yes,"SHA-256 of (workbook name, ds id, 'connection')"
+connection[@class='textscan']/@directory,data-source metadata,yes,relative Data/<id> path inside the package
+relation/columns/column,field definitions,yes,inferred from CSV header + sample
+metadata-records/metadata-record,data-source metadata,yes,one per physical column
+datasource/column,field definitions,yes,role/type; calculated fields carry <calculation>
+calculation/@formula,user-provided content,yes,escaped by ElementTree; never string-spliced
+extract + extract/connection[@class='hyper'],REQUIRED by Tableau Public,yes,dbname points at Data/<id>/<id>.hyper
+"extract/@object-id, @user-specific",UNSUPPORTED on load,n/a,Tableau writes them; loader DTD rejects them - omitted
+"layout/@dim-percentage, @measure-percentage",invariant boilerplate,no,REQUIRED by loader DTD
+object-graph,UNSUPPORTED on load,n/a,present in Tableau's own files; rejected on load - omitted
+worksheet/layout-options/title,user-provided content,yes,title + subtitle runs
+table element order,invariant structure,no,"MUST be (view, style, panes, rows, cols)"
+"view/filter, view/slices",worksheet encodings,yes,"belong in <view>, NOT <table>"
+column-instance/@name,generated id,yes,[agg:Field:kind]; tooltip dimensions MUST use attr:
+pane/mark/@class,worksheet encodings,yes,from template -> mark class map
+encodings/color|size|text|tooltip,worksheet encodings,yes,fully-qualified [federated.x].[agg:F:k]
+windows/window,invariant boilerplate,partly,one per worksheet; filter cards listed on right edge
+repository-location,unsupported element,n/a,identifies a published workbook; never emitted
+simple-id,unsupported element,n/a,Tableau-internal; never emitted

@@ -1,0 +1,47 @@
+{
+  "canonical_workbook_url": "https://public.tableau.com/app/profile/demo.analyst/viz/Quarterly_Sales_Review/Matrix-ActionDecisionQuadrant",
+  "download_date": "2026-07-26",
+  "twbx_sha256": "54ceec36a07f769dc0da6757e833de21318936f4600f7ff4f3a6e24ae77bdd59",
+  "twbx_size_bytes": 132632,
+  "document_version": "18.1",
+  "source_build": "2026.2.0 (20262.26.0603.1643)",
+  "source_platform": "mac",
+  "worksheet_count": 12,
+  "dashboard_count": 0,
+  "story_count": 0,
+  "data_source_count": 13,
+  "calculated_field_count": 3,
+  "parameter_count": 0,
+  "lod_expression_count": 0,
+  "connection_types": [
+    "federated -> textscan (CSV)"
+  ],
+  "joins": 0,
+  "custom_sql": 0,
+  "extract_files": 13,
+  "mark_types": {
+    "Bar": 2,
+    "Square": 3,
+    "Line": 2,
+    "Shape": 2,
+    "Circle": 1,
+    "GanttBar": 1,
+    "Automatic": 1
+  },
+  "twb_char_count": 514262,
+  "composition": {
+    "datasource_blocks_chars": 402606,
+    "worksheet_blocks_chars": 94818,
+    "other_chars": 16838
+  },
+  "top_level_element_order": [
+    "document-format-change-manifest",
+    "repository-location",
+    "preferences",
+    "datasources",
+    "mapsources",
+    "worksheets",
+    "windows"
+  ],
+  "note": "Original .twbx is NOT committed to git (see .gitignore). Hash recorded so tests can detect mutation."
+}
