@@ -7,7 +7,14 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Andy Yaro" }]
 dependencies = [
-    "mcp>=1.28.0",
+    # Upper bound is deliberate. mcp 2.0.0 removed the decorator API on
+    # mcp.server.Server (@server.list_tools / @server.call_tool), which this
+    # server is written against - a clean install without this cap resolves to
+    # 2.x and the server fails at import with
+    #   AttributeError: 'Server' object has no attribute 'list_tools'.
+    # Migrating to the 2.x handler API is tracked separately; until then this
+    # keeps `uv sync` reproducible instead of silently broken.
+    "mcp>=1.28.0,<2",
     "jsonschema>=4.23.0",
     # Tableau Public refuses any workbook that is not extract-backed (Error Code
     # 3C242D89), so compiler/extract.py materialises every CSV into a .hyper and

@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # macOS only, and deliberately so: window discovery, publishing and every
+    # screenshot go through CoreGraphics via pyobjc-framework-Quartz, which is
+    # declared with a `sys_platform == 'darwin'` marker. On Linux the import
+    # fails soft and the server is silently half-dead, so a green Linux run
+    # would prove nothing.
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor and current, per requires-python = ">=3.10"
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Install the package
+        run: uv pip install -e .
+
+      # The live tier drives a real Tableau GUI and is excluded twice over:
+      # `addopts = "-m 'not live'"` in pyproject.toml, and a conftest guard in
+      # tests/live/ that catches an unmarked test the marker filter cannot.
+      # Neither is relaxed here.
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Lint
+        run: uv run ruff check .
+
+      # Reported, not enforced: the tree currently has formatting drift that
+      # predates this workflow. Surfacing it without failing the build keeps the
+      # signal visible while leaving the reformat as a deliberate, separate change.
+      - name: Formatting (report only)
+        continue-on-error: true
+        run: uv run ruff format --check .
+
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build wheel and sdist
+        run: uv build
+      - name: Install the built wheel into a clean environment
+        run: |
+          uv venv /tmp/smoke
+          uv pip install --python /tmp/smoke/bin/python dist/*.whl
+          /tmp/smoke/bin/python -c "import tableau_public_authoring; print('import OK')"
