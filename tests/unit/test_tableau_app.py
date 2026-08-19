@@ -1,4 +1,4 @@
-"""Desktop-control tests for ``desktop.tableau_app`` — every OS call is faked.
+"""Desktop-control tests for ``desktop.tableau_app`` - every OS call is faked.
 
 Nothing here touches Quartz, osascript, the pasteboard, `open`, `screencapture`
 or the Tableau GUI: the window server is a fake ``Quartz`` module injected into
@@ -104,8 +104,8 @@ class FakeQuartz:
 
     The real constants matter: ``kCGWindowListOptionAll`` is 0 and
     ``kCGWindowListOptionOnScreenOnly`` is 1, so the option word has to be read
-    bitwise. The all-windows list is a SUPERSET — it returns the husks *plus*
-    everything on screen — which is why :func:`list_windows` has to de-duplicate.
+    bitwise. The all-windows list is a SUPERSET - it returns the husks *plus*
+    everything on screen - which is why :func:`list_windows` has to de-duplicate.
     """
 
     kCGWindowListOptionAll = 0
@@ -365,7 +365,7 @@ class FakeDesktopScripts:
 
     ``clipboard`` is what pbpaste returns. ``copies_on_click`` is what Tableau
     writes to the pasteboard when the 'Copy Error Message' click actually works;
-    ``None`` models the documented Qt no-op — the click is accepted and nothing
+    ``None`` models the documented Qt no-op - the click is accepted and nothing
     happens.
     """
 
@@ -525,7 +525,7 @@ def test_close_window_no_longer_exists():
     """It returned True whenever an AXCloseButton click did not throw.
 
     Qt ignores System Events clicks, so True meant nothing, and it selected its
-    target by substring — `close_window("Probe")` could close Probe_Alpha and
+    target by substring - `close_window("Probe")` could close Probe_Alpha and
     destroy unsaved work. It had no callers, and window_control.close_document
     already does the job with verification, so it was deleted rather than
     duplicated.

@@ -8,7 +8,7 @@ contrast, may address anything on the machine.
 That inverts the usual expectation, so it is worth stating plainly: **relative
 paths here are the stricter of the two.** The tests below therefore spend most of
 their effort on escape attempts, and on proving the check runs *after* symlinks
-are resolved — a check on the literal string would pass every one of them.
+are resolved - a check on the literal string would pass every one of them.
 """
 
 from __future__ import annotations

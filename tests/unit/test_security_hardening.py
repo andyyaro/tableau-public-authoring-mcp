@@ -49,7 +49,7 @@ def _no_ambient_allowlist(monkeypatch):
 
 
 # =========================================================================
-# paths.py #1 — containment, and the claims made about it
+# paths.py #1 - containment, and the claims made about it
 # =========================================================================
 
 
@@ -125,7 +125,7 @@ def test_resolve_input_file_accepts_a_suffixes_tuple(tmp_path):
     """``server.py`` already calls this as ``suffixes=(".twbx",)``.
 
     The parameter did not exist, so ``inspect_local_workbook`` raised
-    ``TypeError: unexpected keyword argument 'suffixes'`` on every invocation —
+    ``TypeError: unexpected keyword argument 'suffixes'`` on every invocation -
     the tool could not run at all.
     """
     pkg = tmp_path / "book.twbx"
@@ -138,7 +138,7 @@ def test_resolve_input_file_accepts_a_suffixes_tuple(tmp_path):
 
 
 # =========================================================================
-# paths.py #2 — the write blocklist
+# paths.py #2 - the write blocklist
 # =========================================================================
 
 
@@ -174,7 +174,7 @@ def test_write_blocklist_covers_user_writable_persistence_dirs(tmp_path, monkeyp
 
 
 # =========================================================================
-# paths.py #3 — Windows traversal in archive entry names
+# paths.py #3 - Windows traversal in archive entry names
 # =========================================================================
 
 
@@ -214,7 +214,7 @@ def test_inspect_twbx_classifies_windows_traversal_as_unsafe(tmp_path):
 
 
 # =========================================================================
-# twbx.py #4 — bounds on inspecting an untrusted archive
+# twbx.py #4 - bounds on inspecting an untrusted archive
 # =========================================================================
 
 
@@ -323,7 +323,7 @@ def test_inspect_twbx_handles_a_zip_comment(tmp_path):
 
 
 # =========================================================================
-# structure.py #5 — the empty_worksheet check could never fire
+# structure.py #5 - the empty_worksheet check could never fire
 # =========================================================================
 
 
@@ -346,7 +346,7 @@ def test_empty_worksheet_check_can_actually_fire(tmp_path):
 
     The compiler always emits <rows>, <cols> and <encodings>, so ``has_shelf``
     and ``has_enc`` were both always true and the safety net was dead code. The
-    file below keeps all three elements and empties them — exactly the shape a
+    file below keeps all three elements and empties them - exactly the shape a
     compiler regression would produce.
     """
     csv = write_csv(tmp_path / "d.csv")
@@ -381,7 +381,7 @@ def test_empty_worksheet_check_does_not_fire_on_a_real_build(tmp_path):
 
 
 # =========================================================================
-# structure.py #6 — the billion-laughs claim was false
+# structure.py #6 - the billion-laughs claim was false
 # =========================================================================
 
 _BOMB = """<?xml version="1.0"?>
@@ -467,7 +467,7 @@ def test_validate_generated_reports_malformed_xml_as_before(tmp_path, any_spec):
 
 
 # =========================================================================
-# extract.py #7 — the row cap, and streaming instead of buffering
+# extract.py #7 - the row cap, and streaming instead of buffering
 # =========================================================================
 
 
@@ -512,7 +512,7 @@ def test_build_hyper_does_not_buffer_the_whole_csv(tmp_path):
 
 
 # =========================================================================
-# extract.py #8 — hyperd's log
+# extract.py #8 - hyperd's log
 # =========================================================================
 
 

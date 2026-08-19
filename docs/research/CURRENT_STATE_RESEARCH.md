@@ -1,4 +1,4 @@
-# Current State Research — Tableau Public Authoring & Publishing
+# Current State Research - Tableau Public Authoring & Publishing
 
 **Research date:** 2026-07-26
 **Researcher:** Claude Code (autonomous run, MASTERPROMPT_AUTHORING.md §5)
@@ -26,7 +26,7 @@ These were measured directly on this Mac on 2026-07-26, not read from documentat
 | `gh` auth | logged in as `<your-github-user>`, scopes incl. `repo` | `gh auth status` |
 | Bundled Hyper engine | `Contents/MacOS/hyper/hyperd` (267 MB) | `ls -la` |
 
-### 1.1 AppleScript support — NONE (decisive finding)
+### 1.1 AppleScript support - NONE (decisive finding)
 
 Checked per §12. Result: **Tableau Public 2026.2.0 exposes no AppleScript dictionary.**
 
@@ -40,14 +40,14 @@ Checked per §12. Result: **Tableau Public 2026.2.0 exposes no AppleScript dicti
 | `.scriptSuite` / `.scriptTerminology` | none found |
 
 The `sdef` command itself is unavailable (requires full Xcode; only Command Line
-Tools are installed), but the bundle inspection above is conclusive on its own —
+Tools are installed), but the bundle inspection above is conclusive on its own -
 an app with a scripting dictionary must ship an `.sdef` and declare it.
 
 **Implication:** Strategy A (pure AppleScript control) is impossible. Any desktop
 automation must use the macOS Accessibility (AX) API, driven either through
 `System Events` via `osascript` or through PyObjC/`AXUIElement`.
 
-### 1.2 macOS permissions — ALREADY GRANTED (no checkpoint required)
+### 1.2 macOS permissions - ALREADY GRANTED (no checkpoint required)
 
 | Permission | Status | Probe |
 |---|---|---|
@@ -58,7 +58,7 @@ automation must use the macOS Accessibility (AX) API, driven either through
 No TCC prompt is required for this run. No system database was modified (§4 rule
 respected).
 
-### 1.3 Tableau Public accessibility surface — verified usable
+### 1.3 Tableau Public accessibility surface - verified usable
 
 With the app running (pid 76583), the AX tree is readable:
 
@@ -71,7 +71,7 @@ start-page items (`New`, `Open...`, `Open from Tableau Public...`,
 `Hide Start Page`, `Manage My Profile...`, plus a recent-files list). This is
 because the **Start Page is active**; macOS apps populate workbook-context menu
 items only when a workbook window is frontmost. Full menu enumeration must be
-repeated with a workbook open — see §5 below.
+repeated with a workbook open - see §5 below.
 
 **Implication:** Named menu-item automation is viable. Coordinate clicking is not
 required as the primary mechanism (§4 rule respected).
@@ -84,8 +84,8 @@ required as the primary mechanism (§4 rule respected).
 
 - The Tableau REST API's publishing methods target **Tableau Server and Tableau
   Cloud**, not Tableau Public.
-  Source: [Publishing Methods — Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_publishing.htm) (accessed 2026-07-26)
-  Source: [Publishing Resources — Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_publish.htm) (accessed 2026-07-26)
+  Source: [Publishing Methods - Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_publishing.htm) (accessed 2026-07-26)
+  Source: [Publishing Resources - Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_publish.htm) (accessed 2026-07-26)
 
 - The **only** documented way to publish to Tableau Public is the desktop UI:
   > "Server > Tableau Public > Save to Tableau Public"
@@ -118,7 +118,7 @@ called, no credential is read, and no login protection is bypassed.
 
 ---
 
-## 3. Official Tableau developer tooling — capability assessment
+## 3. Official Tableau developer tooling - capability assessment
 
 | Tool | Can it create a workbook from scratch? | Can it publish to Tableau Public? | Verdict for this project |
 |---|---|---|---|
@@ -129,14 +129,14 @@ called, no credential is read, and no login protection is bypassed.
 | **Metadata API** | No | No | Not applicable |
 | **Extensions API** | No (runs inside a viz) | No | Not applicable |
 
-### 3.1 Document API — explicitly cannot create files
+### 3.1 Document API - explicitly cannot create files
 
 The official documentation states verbatim:
 
 > "We don't yet support creating files from scratch, adding extracts into
 > workbooks or data sources, or updating field information."
 
-It further describes itself as an **"unsupported"** way to make updates — i.e.
+It further describes itself as an **"unsupported"** way to make updates - i.e.
 Tableau does not guarantee stability across versions.
 
 Source: [Tableau Document API](https://tableau.github.io/document-api-python/) (accessed 2026-07-26)
@@ -147,7 +147,7 @@ workbook's connections. It cannot serve as the generation engine. This project
 must generate `.twb` XML itself, using structures verified against a real
 workbook produced by the installed Tableau version.
 
-### 3.2 Hyper API — available but not required for v0.1
+### 3.2 Hyper API - available but not required for v0.1
 
 `tableauhyperapi` 0.0.25080 is available on PyPI (requires Python ≥3.6). The
 Tableau Public app additionally bundles its own `hyperd` engine.
@@ -184,7 +184,7 @@ Evaluated per §7 rather than assumed.
    if deeper AX access is later needed. Node has no comparable first-party path.
 3. **Stdlib sufficiency.** `xml.etree.ElementTree` (structured XML generation,
    satisfying §13's "no unsafe global string replacement"), `zipfile` (`.twbx`
-   packaging), `csv`, `hashlib` — all stdlib, minimising dependency surface.
+   packaging), `csv`, `hashlib` - all stdlib, minimising dependency surface.
 4. **Hyper API is Python-first**, keeping the roadmap open.
 
 TypeScript's advantages (mature SDK, npm distribution) are real, and the reader
@@ -240,7 +240,7 @@ either free-form XML synthesis or UI automation.
 | Option | Available here | Assessment |
 |---|---|---|
 | AppleScript dictionary | **No** (§1.1) | Ruled out |
-| AX via `osascript`/System Events | **Yes, permission granted** | Chosen — named menus/dialogs, no coordinates |
+| AX via `osascript`/System Events | **Yes, permission granted** | Chosen - named menus/dialogs, no coordinates |
 | PyObjC `AXUIElement` | Available if installed | Deeper control; adds dependency. Fallback |
 | CGEvent synthetic keys | Available | Only for text entry into focused fields |
 | `screencapture` | Present | Used for validation screenshots |
@@ -283,7 +283,7 @@ this project must mitigate:
 2. No official library can generate a workbook, so the compiler must be
    first-party, built on structures verified from a real 2026.2.0 file. (§3.1)
 3. Tableau Public has **no AppleScript dictionary**, so automation must be
-   AX-based — and AX permission is already granted. (§1.1, §1.2)
+   AX-based - and AX permission is already granted. (§1.1, §1.2)
 4. A published viz **must contain at least one field**, so "emits valid XML" is
    an insufficient success bar; the workbook must render marks. (§2)
 5. The workbook format is ~78% mechanical scaffolding, making template-derived
@@ -297,13 +297,13 @@ than assumed, in `docs/architecture/ARCHITECTURE_DECISION.md`.
 
 ## Sources
 
-- [Save Workbooks to Tableau Public](https://help.tableau.com/current/pro/desktop/en-us/publish_workbooks_tableaupublic.htm) — accessed 2026-07-26
-- [Publishing Methods — Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_publishing.htm) — accessed 2026-07-26
-- [Publishing Resources — Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_publish.htm) — accessed 2026-07-26
-- [Publish a Workbook (Desktop)](https://help.tableau.com/current/pro/desktop/en-us/publish_workbooks_howto.htm) — accessed 2026-07-26
-- [Tableau Document API (official docs site)](https://tableau.github.io/document-api-python/) — accessed 2026-07-26
-- [tableau/document-api-python README](https://github.com/tableau/document-api-python/blob/master/README.md) — accessed 2026-07-26
-- [Tableau Developer Tools & APIs](https://tableau.com/developer/automation) — accessed 2026-07-26
-- [PyPI — mcp 1.28.1](https://pypi.org/project/mcp/) — accessed 2026-07-26
-- [PyPI — tableauhyperapi 0.0.25080](https://pypi.org/project/tableauhyperapi/) — accessed 2026-07-26
-- `https://www.tableau.com/legal/terms-of-service` — **HTTP 403**, not retrievable by automated request on 2026-07-26
+- [Save Workbooks to Tableau Public](https://help.tableau.com/current/pro/desktop/en-us/publish_workbooks_tableaupublic.htm) - accessed 2026-07-26
+- [Publishing Methods - Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_publishing.htm) - accessed 2026-07-26
+- [Publishing Resources - Tableau Server REST API](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_publish.htm) - accessed 2026-07-26
+- [Publish a Workbook (Desktop)](https://help.tableau.com/current/pro/desktop/en-us/publish_workbooks_howto.htm) - accessed 2026-07-26
+- [Tableau Document API (official docs site)](https://tableau.github.io/document-api-python/) - accessed 2026-07-26
+- [tableau/document-api-python README](https://github.com/tableau/document-api-python/blob/master/README.md) - accessed 2026-07-26
+- [Tableau Developer Tools & APIs](https://tableau.com/developer/automation) - accessed 2026-07-26
+- [PyPI - mcp 1.28.1](https://pypi.org/project/mcp/) - accessed 2026-07-26
+- [PyPI - tableauhyperapi 0.0.25080](https://pypi.org/project/tableauhyperapi/) - accessed 2026-07-26
+- `https://www.tableau.com/legal/terms-of-service` - **HTTP 403**, not retrievable by automated request on 2026-07-26

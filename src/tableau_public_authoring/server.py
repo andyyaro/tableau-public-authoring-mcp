@@ -299,7 +299,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> list[TextContent]:
                 ],
                 "worksheets": [{"name": w.name, "template": w.template} for w in spec.worksheets],
                 "output_directory": str(spec.output_dir),
-                "note": "dry run — no files were written",
+                "note": "dry run - no files were written",
             }
         )
 

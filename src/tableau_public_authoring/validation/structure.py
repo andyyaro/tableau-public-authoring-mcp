@@ -1,4 +1,4 @@
-"""Layer 2 validation — generated-file structural checks (§14)."""
+"""Layer 2 validation - generated-file structural checks (§14)."""
 
 from __future__ import annotations
 
@@ -176,7 +176,7 @@ def _check_dashboards(root: ET.Element, spec: WorkbookSpec, ws_names: set[str]) 
     """Layer-2 checks for the EXPERIMENTAL ``<dashboards>`` section.
 
     These are structural only. They cannot tell you whether Tableau Public
-    2026.2.0 will actually open the file — nothing in this project can, until a
+    2026.2.0 will actually open the file - nothing in this project can, until a
     generated dashboard is loaded by hand.
     """
     issues: list[Issue] = []
@@ -388,15 +388,15 @@ def _reject_entity_declarations(path: Path) -> None:
     The comment this replaces claimed ElementTree was immune to billion-laughs.
     Half of that was right and half was badly wrong:
 
-    * XXE — correct. An external entity is never fetched; the reference raises
+    * XXE - correct. An external entity is never fetched; the reference raises
       ``undefined entity``, verified against ``<!ENTITY xxe SYSTEM "file:///etc/passwd">``.
-    * billion-laughs — wrong. Internal entities ARE expanded. A 343-byte ``.twb``
+    * billion-laughs - wrong. Internal entities ARE expanded. A 343-byte ``.twb``
       with six levels of ten-fold nesting expands to 1,000,000 characters inside
       ``ET.parse``, and each further level multiplies that by ten.
 
     The defence needs no new dependency. Entity declarations live in the internal
     DTD subset, which is entirely before the root element, and expat reports each
-    declaration *without* expanding it — nothing is expanded until a reference is
+    declaration *without* expanding it - nothing is expanded until a reference is
     encountered in content, which happens later. So a pre-pass that stops at the
     root element start tag has seen every declaration while having done no work
     proportional to their expansion. It reads only the prolog.
@@ -450,7 +450,7 @@ def _has_populated_shelf(ws: ET.Element) -> bool:
     The presence test this replaces could never be false. The compiler emits
     ``<rows>``, ``<cols>`` and ``<encodings>`` unconditionally, so
     ``find(".//rows") is not None`` and ``any(ws.iter("encodings"))`` were both
-    always true and ``empty_worksheet`` was dead code — a rows-only text table
+    always true and ``empty_worksheet`` was dead code - a rows-only text table
     ships ``<encodings />`` and ``<cols />`` and would have passed with every
     shelf empty. What matters is whether those elements have anything *in* them:
     ``<rows>``/``<cols>`` carry their pills as text, ``<encodings>`` as children.

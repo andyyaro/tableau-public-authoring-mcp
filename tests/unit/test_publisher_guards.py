@@ -4,7 +4,7 @@ Publishing cannot be undone: the workbook becomes world-readable, and an
 overwrite replaces something the user already had online. Every check in this
 file existed in some form and did not actually hold.
 
-No test here touches the GUI or the network — every OS and HTTP call is patched.
+No test here touches the GUI or the network - every OS and HTTP call is patched.
 """
 
 from __future__ import annotations

@@ -2,7 +2,7 @@
 
 EXPERIMENTAL / UNVERIFIED. These tests prove the compiler emits the structure
 documented in docs/fixtures/DASHBOARD_FIXTURE_ANALYSIS.md. They cannot prove
-Tableau Public 2026.2.0 opens it — no fixture written by that build was
+Tableau Public 2026.2.0 opens it - no fixture written by that build was
 available and no generated dashboard has been loaded by hand.
 """
 
@@ -409,7 +409,7 @@ def test_dashboard_build_is_byte_deterministic(csv_file, out_dir):
 
 
 def test_layer2_catches_unresolved_zone_worksheet(csv_file, out_dir):
-    """A renamed sheet loads fine and renders an empty box — only layer 2 sees it."""
+    """A renamed sheet loads fine and renders an empty box - only layer 2 sees it."""
     from tableau_public_authoring.validation.structure import _check_dashboards
 
     s = two_sheet_spec(csv_file, out_dir)
@@ -497,7 +497,7 @@ def test_hostile_dashboard_name_is_escaped_not_injected(csv_file, out_dir):
     """A hostile name must become escaped attribute text, never markup.
 
     The compiler builds every node with ElementTree, so the mitigation holds even
-    when layer-1's name regex is bypassed entirely — which is what this test does
+    when layer-1's name regex is bypassed entirely - which is what this test does
     by constructing the Dashboard directly.
     """
     hostile = 'Evil" onload="x"><injected/><!-- & ]]> '

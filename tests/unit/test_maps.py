@@ -1,16 +1,16 @@
 """Map template: geographic roles, axes, and the background map.
 
 Every structural assertion here is pinned to a published workbook that renders a
-real map — the author's own `Quarterly_Sales_Review`, sheet
+real map - the author's own `Quarterly_Sales_Review`, sheet
 "Map - Review Burden by Candidate Site" (docs/fixtures/MAP_FIXTURE_ANALYSIS.md).
 Three things in that fixture are load-bearing, and a map fails differently
 depending on which one is missing:
 
-* ``<mapsources><mapsource name="Tableau"/></mapsources>`` — without it the marks
+* ``<mapsources><mapsource name="Tableau"/></mapsources>`` - without it the marks
   plot on blank white space with no coastline.
-* ``semantic-role="[Geographical].[Latitude]"`` — without it the coordinates are
+* ``semantic-role="[Geographical].[Latitude]"`` - without it the coordinates are
   ordinary measures and the sheet is a scatter plot.
-* ``aggregation="Avg"`` — Tableau's default is Sum, and summed latitudes collapse
+* ``aggregation="Avg"`` - Tableau's default is Sum, and summed latitudes collapse
   every mark onto one meaningless point.
 
 None of those produce an error dialog. They produce a plausible-looking wrong

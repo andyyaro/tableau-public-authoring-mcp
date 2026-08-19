@@ -17,19 +17,19 @@ then opened in Tableau Public 2026.2.0 and photographed. Nothing was authored by
 hand, and nothing was touched in Tableau before the screenshot was taken. The
 data is the synthetic 12-row fixture in `tests/fixtures/data/`.
 
-**A dashboard** — two generated worksheets tiled in one container, fixed 1200×800
+**A dashboard** - two generated worksheets tiled in one container, fixed 1200×800
 canvas, title rendered:
 
 ![Generated dashboard: a bar chart and a symbol map side by side](docs/images/demo_dashboard.png)
 
-**A symbol map** — `latitude`/`longitude` detected from the column names and
+**A symbol map** - `latitude`/`longitude` detected from the column names and
 tagged with Tableau's `[Geographical]` semantic role, which is what puts a real
 background map behind the marks. One mark per site, coloured by a dimension and
 sized by a measure:
 
 ![Generated symbol map with a background map and twelve marks](docs/images/demo_map.png)
 
-**A bar chart** — colour by dimension, mark labels drawn, canvas fit applied:
+**A bar chart** - colour by dimension, mark labels drawn, canvas fit applied:
 
 ![Generated bar chart with coloured bars and value labels](docs/images/demo_bar.png)
 
@@ -72,12 +72,12 @@ Tableau Public 2026.2.0 on macOS**, not merely by producing XML.
 - Dashboards: title, fixed or automatic canvas, worksheets tiled in one container
 - Calculated fields (Tableau formula syntax)
 - Categorical filters, rendered as interactive filter cards
-- Encodings: color, size, label, tooltip, and **detail** — `detail` raises the level of detail, so a scatter draws one mark per site instead of one per colour value
+- Encodings: color, size, label, tooltip, and **detail** - `detail` raises the level of detail, so a scatter draws one mark per site instead of one per colour value
 - Canvas fit: `standard`, `fit_width`, `fit_height`, `entire_view`
 - Worksheet titles and subtitles
 - `.twbx` packaging, with a byte-deterministic `.twb` inside
 
-**Not supported in v0.1** — see `docs/architecture/CAPABILITY_BOUNDARY.md`
+**Not supported in v0.1** - see `docs/architecture/CAPABILITY_BOUNDARY.md`
 - Stories, parameters, LOD expressions, joins/custom SQL, live connections
 - Sets, groups, hierarchies, table calculations, reference lines
 - Filled/choropleth maps, custom territories, map layers, spatial files
@@ -85,14 +85,14 @@ Tableau Public 2026.2.0 on macOS**, not merely by producing XML.
 
 **Two claims to read carefully**
 
-- **The `.twbx` is not byte-reproducible.** The `.twb` inside it is — identical
+- **The `.twbx` is not byte-reproducible.** The `.twb` inside it is - identical
   spec, identical bytes. The archive is not, because the embedded `.hyper` is
   written by Tableau's Hyper engine and carries non-deterministic internal state.
   Diff the `.twb`, never the package digest. See `docs/LIMITATIONS.md` §1.
 - **A standalone `.twb` is only usable next to its data directory.**
   `output.package_twbx: false` writes `<name>.twb` **plus** a `<name>.data/`
   directory holding each source's `.hyper` and CSV, and the `.twb` resolves its
-  data relative to itself — so keep the two together, or move them together. A
+  data relative to itself - so keep the two together, or move them together. A
   packaged build produces the same layout under `Data/`, matching what is inside
   the archive. Paths are always relative by necessity, not by preference: an
   absolute path would embed a home directory, and `build_workbook` refuses to
@@ -106,7 +106,7 @@ Tableau Public 2026.2.0 on macOS**, not merely by producing XML.
    Professional path: in the **Public** edition (2026.2.0) the Server menu holds
    only `Run Optimizer...` and the command lives on the **File** menu. It is
    invoked with a real Command+Shift+S key event, with the File menu as a
-   fallback — see `docs/PUBLISHING_WORKFLOW.md`.
+   fallback - see `docs/PUBLISHING_WORKFLOW.md`.
 2. **Tableau Public rejects non-extract data sources** (`Error Code: 3C242D89`).
    Every CSV is therefore converted to a Hyper extract at build time.
 
@@ -118,7 +118,7 @@ tableau-public-authoring doctor
 ```
 
 No clone, no virtualenv, no paths to edit. `doctor` checks everything the server
-needs and prints exactly what to fix — run it **before** registering, because
+needs and prints exactly what to fix - run it **before** registering, because
 every prerequisite below fails *silently* at runtime rather than raising:
 
 ```
@@ -140,7 +140,7 @@ every prerequisite below fails *silently* at runtime rather than raising:
 | tableauhyperapi | no workbook can be built at all |
 
 macOS permissions are granted **per executable**, so grant them to the
-interpreter `doctor` prints — not to Tableau, and not to your terminal if you
+interpreter `doctor` prints - not to Tableau, and not to your terminal if you
 register a different one. Details in `docs/MACOS_PERMISSIONS.md`.
 
 Requirements: macOS with Tableau Public installed (developed against 2026.2.0,
@@ -153,7 +153,7 @@ claude mcp add --transport stdio --scope user tableau-public-authoring \
   -- tableau-public-authoring
 ```
 
-That is the whole command — `uv tool install` puts the executable on your PATH
+That is the whole command - `uv tool install` puts the executable on your PATH
 at a stable location, so there is no absolute path to substitute and it survives
 upgrades. Registering does **not** affect any other MCP server; verify with
 `claude mcp list`. Restart Claude Code before the tools appear.
@@ -177,7 +177,7 @@ claude mcp add --transport stdio --scope user tableau-public-authoring \
 
 Avoid `uvx --from …` for the registered server: it runs from a
 content-hashed cache path that **changes whenever a dependency changes**, and the
-macOS permission grants are tied to that path — so the server would quietly lose
+macOS permission grants are tied to that path - so the server would quietly lose
 Accessibility and Screen Recording on the next upgrade. It is fine for one-off
 use such as `uvx --from … tableau-public-authoring doctor`.
 
@@ -213,7 +213,7 @@ tableau-public-authoring doctor
 }
 ```
 
-Paths may be relative to a single `base_dir` instead of absolute — and a relative
+Paths may be relative to a single `base_dir` instead of absolute - and a relative
 path is *confined* to that directory, which an absolute path is not. See
 `docs/AUTHORING_SPEC.md`.
 
@@ -238,7 +238,7 @@ published workbook that the compiler was reverse-engineered from.
 server cannot check whether a workbook of that name is already live, and Tableau
 Public replaces a same-named workbook irreversibly, with no version history.
 
-It drives the visible command and **never reads, types, or stores credentials** —
+It drives the visible command and **never reads, types, or stores credentials** -
 it uses your existing signed-in desktop session. If Tableau needs a sign-in, the
 tool stops and tells you to sign in manually. Publication is irreversible and
 world-visible.
@@ -286,4 +286,4 @@ publication is irreversible from its side, which is why it requires
 
 ## License
 
-MIT — see `LICENSE`.
+MIT - see `LICENSE`.

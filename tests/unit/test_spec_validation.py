@@ -93,7 +93,7 @@ def test_malformed_dashboard_rejected_with_clear_message(csv_file, out_dir):
     """Dashboards are parsed now (EXPERIMENTAL), but a malformed one still fails loudly.
 
     This test previously asserted that *any* ``dashboards`` entry was rejected with
-    "dashboards are not supported in v0.1". That rejection no longer exists — see
+    "dashboards are not supported in v0.1". That rejection no longer exists - see
     tests/unit/test_dashboards.py for the full dashboard contract. A dashboard with
     no worksheets is still an error, so the same malformed input is used here.
     """

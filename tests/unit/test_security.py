@@ -1,4 +1,4 @@
-"""Security tests — the mitigations named in docs/architecture/THREAT_MODEL.md."""
+"""Security tests - the mitigations named in docs/architecture/THREAT_MODEL.md."""
 
 from __future__ import annotations
 

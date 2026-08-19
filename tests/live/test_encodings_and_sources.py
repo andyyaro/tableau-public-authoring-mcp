@@ -3,8 +3,8 @@
 ``tests/unit/test_coverage_gaps.py`` proves the compiler emits a ``<size>``
 encoding and points each data source at its own ``Data/<id>/`` directory. Both
 of those are statements about bytes. Neither settles the question
-CAPABILITY_BOUNDARY.md actually claims — that Tableau Public *opened the file
-and drew something* — and that gap is not hypothetical: two defects in this
+CAPABILITY_BOUNDARY.md actually claims - that Tableau Public *opened the file
+and drew something* - and that gap is not hypothetical: two defects in this
 project produced workbooks that loaded without a single complaint and rendered
 an empty white pane. An encoding whose pill will not resolve is exactly that
 shape of failure, and so is an extract the workbook looks for at a path the
@@ -62,7 +62,7 @@ def test_a_size_encoded_worksheet_renders_its_marks(live_env, open_and_capture):
     has not declared correctly renders red on the Marks card and the canvas
     stays empty, with no error dialog anywhere. That is a pixel question.
 
-    Circle rather than map on purpose — a map draws a background tile layer, so
+    Circle rather than map on purpose - a map draws a background tile layer, so
     its canvas has ink whether or not a single mark rendered.
 
     Twelve rows of states are what keeps these marks inside WORKSHEET_CANVAS

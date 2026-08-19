@@ -5,7 +5,7 @@ this module handles semantics that a schema cannot express: cross-references
 between worksheets and data sources, field existence, and encoding compatibility.
 
 Every part of this model describes XML that has been generated, opened in Tableau
-Public 2026.2.0 and rendered — including ``dashboards``, which was originally
+Public 2026.2.0 and rendered - including ``dashboards``, which was originally
 reverse-engineered from older published fixtures and carried an
 EXPERIMENTAL/UNVERIFIED warning here long after it had been confirmed to load.
 See :class:`Dashboard`.
@@ -32,7 +32,7 @@ from ..security.paths import (
 SPEC_VERSION = "0.1"
 
 # Worksheet patterns this version can actually produce. Kept in lockstep with
-# docs/architecture/CAPABILITY_BOUNDARY.md — do not add a name here unless the
+# docs/architecture/CAPABILITY_BOUNDARY.md - do not add a name here unless the
 # compiler emits it and a live test has opened it in Tableau.
 SUPPORTED_TEMPLATES = (
     "bar",
@@ -773,7 +773,7 @@ def parse_spec(raw: dict[str, Any]) -> WorkbookSpec:
         )
 
     # ---- dashboards -------------------------------------------------------
-    # VERIFIED against Tableau Public 2026.2.0 — see the Dashboard docstring.
+    # VERIFIED against Tableau Public 2026.2.0 - see the Dashboard docstring.
     raw_db = _optional_list(raw, "dashboards", "'dashboards'")
     dashboards: list[Dashboard] = []
     seen_db: set[str] = set()

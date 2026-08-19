@@ -6,15 +6,15 @@ Machine-readable contract: `schemas/workbook-spec-v0.1.json`, which defines the
 **That file is generated, not hand-written.** It is the output of
 `models.spec.spec_json_schema()`, built from the same constants and dataclasses
 `parse_spec` enforces, and `tests/unit/test_schema_contract.py` fails if the two
-diverge — including if the schema is ever made *stricter* than the server, which
+diverge - including if the schema is ever made *stricter* than the server, which
 it silently was for a long time (it capped lengths and counts nobody enforces,
 and omitted `fit` entirely while `additionalProperties: false` would have
 rejected it). The same generated schema is what the MCP `build_workbook` and
 `validate_workbook_spec` tools advertise as their input schema, so the contract a
 caller is shown is the contract that runs.
 
-Everything a schema cannot express — cross-references, field existence, encoding
-compatibility, template shelf rules — is checked in `models/spec.py`. Unknown
+Everything a schema cannot express - cross-references, field existence, encoding
+compatibility, template shelf rules - is checked in `models/spec.py`. Unknown
 properties are rejected at every level, so typos fail loudly rather than being
 silently dropped.
 
@@ -74,7 +74,7 @@ existing column. Formulas are escaped by the XML serializer, never spliced.
 **`detail`** raises the level of detail. Each dimension placed there adds a
 grouping key, which is how a sheet draws one mark per entity instead of one per
 colour value: a scatter with `Status` on `color` alone draws 3 marks, and adding
-`Site Name` to `detail` draws 12. A field may appear on `detail` at most once —
+`Site Name` to `detail` draws 12. A field may appear on `detail` at most once -
 a second copy cannot subdivide the marks further and is always a mistake. Unlike
 `tooltips`, dimensions on `detail` keep their `None` derivation rather than being
 promoted to `Attribute`, because raising the level of detail is exactly what
@@ -89,7 +89,7 @@ tucked into the top-left corner.
 **`latitude` / `longitude`** are the `map` template's axes, not encodings: the
 compiler puts latitude on rows and longitude on columns itself, because that
 order is a rule of Tableau's projection rather than a caller's choice. Both are
-inferred when omitted, from columns whose names identify them as coordinates —
+inferred when omitted, from columns whose names identify them as coordinates -
 supply them explicitly only when inference is ambiguous, which it is when a data
 source has more than one candidate column (that is an error, not a guess).
 Coordinates are always **averaged**: asking for `Sum` is rejected, because
@@ -117,7 +117,7 @@ the sheet renders blank with a red pill. This is applied for you.
 | `bar`, `line`, `heatmap`, `scatter`, `circle` | rows **and** columns |
 | `text_table` | rows |
 | `scatter` | aggregated measures on both shelves |
-| `map` | **neither** rows nor columns — its axes are its coordinates. Needs at least one dimension on `detail`, `color` or `label`, or every row averages into a single point. `rows`/`columns` are not offered as a second pair of axes. |
+| `map` | **neither** rows nor columns - its axes are its coordinates. Needs at least one dimension on `detail`, `color` or `label`, or every row averages into a single point. `rows`/`columns` are not offered as a second pair of axes. |
 
 `latitude` and `longitude` are rejected on every template except `map`.
 
@@ -131,18 +131,18 @@ the sheet renders blank with a red pill. This is applied for you.
 
 | Key | Notes |
 |---|---|
-| `name` | required; unique, and must not collide with a worksheet name — both are registered in `<windows>` by name |
+| `name` | required; unique, and must not collide with a worksheet name - both are registered in `<windows>` by name |
 | `title` | optional, 1-300 chars |
 | `direction` | `vertical` (default) or `horizontal` |
 | `sizing_mode` | `fixed` (default) or `automatic` |
-| `width`, `height` | pixels, 100-10000, default 1200x800. **Rejected** when `sizing_mode` is `automatic`, which has no declared canvas at all — accepting a size there would silently discard it |
+| `width`, `height` | pixels, 100-10000, default 1200x800. **Rejected** when `sizing_mode` is `automatic`, which has no declared canvas at all - accepting a size there would silently discard it |
 | `worksheets` | required, up to 20 zones. Each is a worksheet name, or `{ worksheet, show_title }` |
 
 Scope is deliberately the smallest thing that is verified: worksheets tiled in
 **one** horizontal or vertical container, plus an optional title. A worksheet may
 appear at most once per dashboard. Filter cards, colour legends, highlighters,
 parameter controls, images, floating zones, device layouts and dashboard actions
-are understood but **not generated** — see
+are understood but **not generated** - see
 `docs/architecture/CAPABILITY_BOUNDARY.md`.
 
 A zone references its worksheet by bare name; there is no id behind it, so an
@@ -162,7 +162,7 @@ Every path may be absolute, a `~` path, or **relative to `base_dir`**:
 }
 ```
 
-That is the ergonomic reason — one absolute path instead of N. The security
+That is the ergonomic reason - one absolute path instead of N. The security
 property runs the other way, and is why relative paths are accepted at all:
 
 > **A relative path is contained. An absolute path is not.**
@@ -171,7 +171,7 @@ A relative path is resolved against `base_dir` and then required to still be
 inside it, so it can address nothing the spec author did not put there. The
 check runs **after** symlinks are resolved, so `data/../../etc/passwd` and a
 symlink inside the base pointing out of it are both rejected. An absolute path
-keeps its existing meaning and reach — confining it would silently break specs
+keeps its existing meaning and reach - confining it would silently break specs
 that mix the two.
 
 A relative path with no `base_dir` is an error. It is never resolved against the
@@ -187,7 +187,7 @@ posture available: nothing outside that directory is reachable.
 
 `validate_workbook_spec` runs everything below without writing files:
 
-1. structural — the spec's shape, against the generated JSON Schema;
+1. structural - the spec's shape, against the generated JSON Schema;
    unknown keys rejected at every level
 2. path safety (absolute, no traversal, exists, size caps)
 3. cross-references (every field exists in its data source; every dashboard zone
@@ -199,5 +199,5 @@ posture available: nothing outside that directory is reachable.
 Steps 2-5 are semantic and live in `models/spec.py`, because a JSON Schema cannot
 express them: whether a field name resolves depends on the CSV on disk, not on
 the document. `build_workbook` runs all of it and then a second, independent
-layer over the *generated* file (`validation/structure.py`) — see
+layer over the *generated* file (`validation/structure.py`) - see
 `docs/VALIDATION_REPORT.md` for what each layer caught.

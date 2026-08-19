@@ -41,13 +41,13 @@ with stdlib `urllib` under the fixed User-Agent `tableau-public-authoring/0.1`:
 
 The profile-workbooks endpoint is the second request type, and it is not
 incidental: a single publish hits it for the collision check and then once every
-5s until the workbook appears or `wait_timeout` (300s) elapses — up to ~60 further
+5s until the workbook appears or `wait_timeout` (300s) elapses - up to ~60 further
 polls, each of which pages through the profile 50 workbooks at a time. The only
 user-supplied value it carries is the profile name. Both call sites reject any URL
 that is not `https://` (`publisher.verify_url`, `existing._fetch_json`), so
 neither can be redirected to a plaintext scheme by a crafted argument.
 
-No request carries a credential, cookie, or token — both endpoints are public and
+No request carries a credential, cookie, or token - both endpoints are public and
 unauthenticated. The server deliberately does not call the separate
 `tableau-public` reader MCP for the profile lookup: a publish-safety precondition
 must not depend on another server being installed, configured and reachable.

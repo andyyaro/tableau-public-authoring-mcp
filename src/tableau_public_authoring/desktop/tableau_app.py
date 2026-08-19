@@ -44,7 +44,7 @@ class AppStatus:
     windows: list[str] = field(default_factory=list)
     accessibility_ok: bool = False
     notes: list[str] = field(default_factory=list)
-    #: Husks of already-closed documents. Diagnostics only — never "open".
+    #: Husks of already-closed documents. Diagnostics only - never "open".
     stale_windows: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -132,7 +132,7 @@ def list_windows(*, include_stale: bool = False) -> list[dict]:
     WHICH CG LIST, AND WHY IT DECIDES WHAT THE USER IS TOLD
     ``kCGWindowListOptionOnScreenOnly`` is the list of windows that EXIST.
     ``kCGWindowListOptionAll`` additionally returns DESTROYED windows the window
-    server has not yet reaped — every workbook Tableau has ever opened leaves such
+    server has not yet reaped - every workbook Tableau has ever opened leaves such
     a husk behind, always at exactly 218x161 at (-234, 367). This function used to
     query only the all-windows list and its docstring called that an advantage
     ("including windows that are occluded or not marked on-screen"). It is not an
@@ -145,7 +145,7 @@ def list_windows(*, include_stale: bool = False) -> list[dict]:
     and is the reference implementation.
 
     Husks are still enumerated and flagged ``is_stale``; they are simply not part
-    of the default answer. Pass ``include_stale=True`` for diagnostics — never to
+    of the default answer. Pass ``include_stale=True`` for diagnostics - never to
     decide whether a workbook is open, which window to screenshot, or what to
     close: a husk outranks a live Dock tile on area and never disappears.
     """
@@ -231,7 +231,7 @@ def find_window(stem: str, *, min_area: int = 200_000) -> dict | None:
     canonical form used everywhere for workbook names: it tolerates a bare stem, a
     file name (``X.twbx``) and a full window title (``Tableau Public - X``), and
     treats ``_`` as a space. A bare exact title is accepted as well as the
-    prefixed document title — neither can name a different workbook.
+    prefixed document title - neither can name a different workbook.
 
     ``min_area`` is retained: it keeps the wait loop in :func:`open_workbook` from
     latching onto a transient progress dialog such as "Opening workbook
@@ -397,7 +397,7 @@ def read_error_dialog(*, dismiss: bool = True) -> str | None:
     as success, so both halves of this function exist to make sure that answer is
     never wrong in either direction.
 
-    PROVENANCE — why the pasteboard is snapshotted first
+    PROVENANCE - why the pasteboard is snapshotted first
     The text is obtained by clicking the dialog's named 'Copy Error Message'
     button and reading the pasteboard, which beats walking the AX text hierarchy.
     But that click is a System Events click, the exact call this codebase has
@@ -411,11 +411,11 @@ def read_error_dialog(*, dismiss: bool = True) -> str | None:
     attributed to Tableau; the snapshot is then put back so reading an error does
     not cost the user their clipboard.
 
-    NEVER SWALLOWS A DIALOG — the mirror-image failure
+    NEVER SWALLOWS A DIALOG - the mirror-image failure
     The previous version returned ``None`` when the pasteboard was empty, *after*
     ``dismiss`` had already pressed Escape: a real error was thrown away and its
     dialog closed, so it could not even be re-read. Once a dialog is confirmed,
-    this function always returns a non-empty string — the copied text, else the
+    this function always returns a non-empty string - the copied text, else the
     dialog's own AX text, else :data:`DIALOG_TEXT_UNREADABLE`.
     """
     if not is_running():
@@ -470,7 +470,7 @@ def read_error_dialog(*, dismiss: bool = True) -> str | None:
         if before.strip():
             _pbcopy(before)
     # Unchanged pasteboard means the click did nothing (or, harmlessly, that the
-    # error text was already on the clipboard from a previous run) — either way it
+    # error text was already on the clipboard from a previous run) - either way it
     # is not evidence, so it is not reported as Tableau's message.
     if not text:
         text = _dialog_text() or DIALOG_TEXT_UNREADABLE
@@ -544,7 +544,7 @@ def real_click(x: float, y: float, *, settle: float = 0.15) -> None:
     """Post a genuine HID-level mouse click via CGEvent.
 
     THIS IS REQUIRED FOR TABLEAU. Tableau Public is a Qt application, and Qt does
-    not respond to System Events' ``click``/``AXPress`` on menu items — those go
+    not respond to System Events' ``click``/``AXPress`` on menu items - those go
     through the Accessibility layer and are silently ignored, reporting success
     while doing nothing. Only real CGEvent HID events activate its menus.
 
@@ -655,7 +655,7 @@ def screenshot(out_path: Path, *, window_title_contains: str | None = None) -> P
 
 # close_window() was DELETED here, not repaired. It clicked a window's
 # AXCloseButton through System Events and returned True whenever an AXCloseButton
-# was found and the click did not throw — the "reports success and does nothing"
+# was found and the click did not throw - the "reports success and does nothing"
 # pattern, since Qt silently ignores System Events clicks (see real_click), so the
 # usual outcome was True with the window still open. It also selected its target by
 # substring, so `close_window("Probe")` could close Probe_Alpha and destroy unsaved

@@ -130,7 +130,7 @@ def _check_output_collision(spec: WorkbookSpec, base: str, *, overwrite: bool) -
 
     ``build_workbook`` writes ``<base>.twb``, ``<base>.twbx`` (which packaging
     explicitly unlinks first) and ``<base>.manifest.json`` into any writable
-    absolute directory the spec names, with no confirmation — while
+    absolute directory the spec names, with no confirmation - while
     ``publish_to_tableau_public`` gates on ``confirm_publish``. The threat model
     protects the user's existing workbooks; ``output.directory`` pointed at a
     Tableau repository plus a colliding name is all it takes to lose one.

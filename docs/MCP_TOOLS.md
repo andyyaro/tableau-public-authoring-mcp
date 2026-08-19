@@ -17,7 +17,7 @@
 
 | Tool | Purpose |
 |---|---|
-| **`build_workbook`** | **primary** — spec -> `.twb` + `.twbx` + Hyper extracts |
+| **`build_workbook`** | **primary** - spec -> `.twb` + `.twbx` + Hyper extracts |
 | `open_in_tableau_public` | open and wait; returns Tableau's load error verbatim |
 | `validate_in_tableau_public` | layers 3+4: open, detect dialogs, screenshot |
 
@@ -43,12 +43,12 @@ responds.
 
 **`profile`** (your Tableau Public profile name) is required, not optional,
 because two things depend on it:
-1. **Overwrite protection** — the tool queries your published workbooks first and
+1. **Overwrite protection** - the tool queries your published workbooks first and
    refuses to clobber an existing one unless `overwrite: true`. It fails *closed*:
    if the lookup fails it refuses rather than assuming the name is free. This was
    once gated on `if profile:` while `profile` was optional, so omitting one
    argument skipped the only guard against replacing a live workbook.
-2. **URL resolution and verification** — the profile is polled until the new
+2. **URL resolution and verification** - the profile is polled until the new
    workbook appears, and its URL is then loaded to confirm it responds.
 
 Refuses to act unless the intended workbook is the frontmost document. Never reads,
@@ -62,7 +62,7 @@ false`, so a conforming client cannot send it. It never was wired to anything:
 publish it labelled nothing, changed no behaviour, and appeared nowhere in the
 published workbook.
 
-One vestige remains — the `dry_run` payload still emits
+One vestige remains - the `dry_run` payload still emits
 `"is_validation_test": true` inside `would_publish`. That key reflects nothing and
 will read `true` whatever you do. `docs/architecture/THREAT_MODEL.md` describes a
 warning keyed off this flag (T9); **that warning does not exist in the code.**
@@ -76,7 +76,7 @@ a maintained list.
 This is a correctness measure, not tidiness. The report previously claimed
 `"dashboards": "not implemented in v0.1"` long after dashboards were implemented
 and verified rendering. Stale docs are cosmetic; a stale *tool surface* changes
-behaviour, because a model decides what to attempt from this payload — a false
+behaviour, because a model decides what to attempt from this payload - a false
 "unsupported" silently removes a working feature.
 
 Adding an encoding to the `Worksheet` model now surfaces here automatically, and

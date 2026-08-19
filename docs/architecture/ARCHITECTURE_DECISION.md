@@ -1,4 +1,4 @@
-# Architecture Decision Record — Tableau Public Authoring MCP
+# Architecture Decision Record - Tableau Public Authoring MCP
 
 **Status:** Accepted
 **Date:** 2026-07-26
@@ -23,7 +23,7 @@ before any preference is applied:
    Document API states verbatim that it does not support "creating files from
    scratch," and describes itself as unsupported.
 3. **Tableau Public 2026.2.0 ships no AppleScript dictionary** (no `.sdef`, no
-   `NSAppleScriptEnabled`, no URL scheme — verified on this machine).
+   `NSAppleScriptEnabled`, no URL scheme - verified on this machine).
 
 A fourth finding sets the success bar: Tableau's own documentation states *"Your
 viz must contain at least one field before the save option becomes available."*
@@ -34,7 +34,7 @@ real encodings and render marks, or it cannot be published at all.
 
 ## Decision
 
-**Adopt Strategy D — hybrid compiler plus desktop validation and visible-UI
+**Adopt Strategy D - hybrid compiler plus desktop validation and visible-UI
 publishing**, implemented in **Python**.
 
 Concretely:
@@ -60,10 +60,10 @@ max 240):
 
 | Strategy | Score | % |
 |---|---:|---:|
-| **D — hybrid compiler + desktop validation** | **212** | **88.3%** |
-| C — template transformation only | 157 | 65.4% |
-| B — direct `.twb` generation only | 119 | 49.6% |
-| A — pure desktop UI automation | 105 | 43.8% |
+| **D - hybrid compiler + desktop validation** | **212** | **88.3%** |
+| C - template transformation only | 157 | 65.4% |
+| B - direct `.twb` generation only | 119 | 49.6% |
+| A - pure desktop UI automation | 105 | 43.8% |
 
 ### Why A (pure UI automation) fails
 
@@ -74,7 +74,7 @@ means synthetic drag gestures at coordinates, which §4 forbids as a primary
 mechanism and which break on any layout or version change. It is also the slowest
 option and effectively untestable in CI.
 
-It scores well (4/5) on publishing only — which is precisely the sub-problem
+It scores well (4/5) on publishing only - which is precisely the sub-problem
 Strategy D borrows from it.
 
 ### Why B (direct XML generation from scratch) fails
@@ -101,7 +101,7 @@ justification: the matrix was scored from measured evidence (no `.sdef`, no
 publishing API, no create-from-scratch library), and B/C fail on an objective
 capability gap rather than on preference.
 
-### Strategy E — alternatives discovered during research
+### Strategy E - alternatives discovered during research
 
 Two were evaluated and rejected:
 
@@ -137,7 +137,7 @@ separate processes, so the language split imposes no operational cost.
 **Positive**
 
 - Generation is deterministic and unit-testable without Tableau installed.
-- Validation is genuine — the file is opened by the real application.
+- Validation is genuine - the file is opened by the real application.
 - Publishing uses only the documented user-facing workflow; no private endpoints,
   no stored credentials.
 - CI can run everything except the live/publish tiers.

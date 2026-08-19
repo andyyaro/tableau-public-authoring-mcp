@@ -179,4 +179,4 @@ def test_template_opens_and_renders(live_env, open_and_capture, slug, worksheet,
 # so a default ``pytest`` deselected it and the one test whose entire job is to
 # notice a new template arriving without a live case only executed on the runs
 # that were already driving Tableau. Anything else that only reads the table
-# belongs there too — put a test here only if it opens a window.
+# belongs there too - put a test here only if it opens a window.

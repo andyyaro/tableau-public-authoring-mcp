@@ -88,7 +88,7 @@ def test_the_generated_twb_can_find_its_data_on_disk(csv_file, out_dir, package)
     ``directory="Data/sites"`` and output/Data/ does not exist.
 
     A .twb resolves data relative to its own location, so every path it names
-    has to be there next to it — the extract was staged in a hidden .extracts/
+    has to be there next to it - the extract was staged in a hidden .extracts/
     directory nobody referenced.
     """
     result = build_workbook(
@@ -144,7 +144,7 @@ def _text_table(csv_file, out_dir, **shelves) -> ET.Element:
 
 def test_text_table_takes_its_measure_from_rows(csv_file, out_dir):
     """``_mark_requirements("text_table")`` is (rows=True, cols=False), so the
-    canonical text table has NO columns — and the guard required ``col_refs``.
+    canonical text table has NO columns - and the guard required ``col_refs``.
 
     This spec compiled to ``<encodings />``: no <text>, nothing to render.
     """
@@ -207,7 +207,7 @@ def test_the_compiler_refuses_a_filter_it_cannot_express(csv_file, out_dir):
 
 
 def test_the_pipeline_writes_nothing_for_a_measure_filter(csv_file, out_dir):
-    """End to end, either layer may catch it — but no file may appear."""
+    """End to end, either layer may catch it - but no file may appear."""
     raw = make_spec(csv_file, out_dir)
     raw["worksheets"][0]["filters"] = ["Score"]
     with pytest.raises((SpecError, CompileError), match="Score"):

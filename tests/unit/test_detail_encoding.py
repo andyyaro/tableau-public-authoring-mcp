@@ -2,7 +2,7 @@
 
 Detail exists because Color alone establishes a viz's level of detail. A scatter
 plot with ``Status`` on Color and nothing else discrete draws one mark per
-Status value — three marks for a twelve-row table — which was observed on a real
+Status value - three marks for a twelve-row table - which was observed on a real
 render, not reasoned about. Tableau's own Marks card solves this with a Detail
 shelf; the compiler serialises it as ``<lod>`` inside ``<encodings>``.
 
@@ -54,7 +54,7 @@ def out_dir(tmp_path: Path) -> Path:
 
 
 def scatter_spec(csv_file: Path, out_dir: Path, **worksheet_overrides) -> dict:
-    """A scatter sheet with Status on Color — the shape that exposed the defect."""
+    """A scatter sheet with Status on Color - the shape that exposed the defect."""
     ws: dict = {
         "name": "Site Scatter",
         "template": "scatter",

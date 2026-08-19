@@ -15,8 +15,8 @@ the spec model and compiler at call time. Adding a new encoding to
 automatically, and ``tests/unit/test_capability_drift.py`` fails if these ever
 diverge again.
 
-Only genuinely static facts — platform constraints, and features that are simply
-not implemented — are written out by hand.
+Only genuinely static facts - platform constraints, and features that are simply
+not implemented - are written out by hand.
 """
 
 from __future__ import annotations

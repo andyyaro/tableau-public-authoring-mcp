@@ -36,17 +36,17 @@ def stable_id(*parts: str, prefix: str = "", length: int = _TABLEAU_ID_LEN) -> s
 
 
 def datasource_name(workbook_name: str, datasource_id: str) -> str:
-    """``federated.<stable>`` — the workbook-level data source identifier."""
+    """``federated.<stable>`` - the workbook-level data source identifier."""
     return stable_id(workbook_name, datasource_id, "datasource", prefix="federated.")
 
 
 def connection_name(workbook_name: str, datasource_id: str) -> str:
-    """``textscan.<stable>`` — the named CSV connection inside a data source."""
+    """``textscan.<stable>`` - the named CSV connection inside a data source."""
     return stable_id(workbook_name, datasource_id, "connection", prefix="textscan.")
 
 
 def calculation_name(workbook_name: str, datasource_id: str, field_name: str) -> str:
-    """``[Calculation_<digits>]`` — Tableau's internal name for a calculated field.
+    """``[Calculation_<digits>]`` - Tableau's internal name for a calculated field.
 
     Tableau uses a numeric suffix; we derive a stable 16-digit value so repeated
     compilation of the same spec yields the same identifier.

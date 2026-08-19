@@ -1,6 +1,6 @@
 """Regression guards for the Tableau loader's DTD content model.
 
-Every constraint here was discovered the hard way — by generating a workbook,
+Every constraint here was discovered the hard way - by generating a workbook,
 opening it in Tableau Public 2026.2.0, and reading the error dialog. Each one
 produced a file that Tableau REFUSED TO LOAD. They are cheap to re-break by
 accident (they are all "just" an attribute or an element position), and the only
@@ -107,8 +107,8 @@ def test_tooltip_dimensions_use_attr_derivation(built):
     """derivation='None' on a tooltip dimension gave a red pill and a blank canvas.
 
     Scoped to the tooltip ENCODING specifically. The same field used as a filter
-    correctly keeps the None derivation — that is how Tableau's own files express a
-    categorical filter — so a workbook-wide ban on ``[none:Field:nk]`` would be wrong.
+    correctly keeps the None derivation - that is how Tableau's own files express a
+    categorical filter - so a workbook-wide ban on ``[none:Field:nk]`` would be wrong.
     """
     root = ET.fromstring(built[1])
     checked = 0

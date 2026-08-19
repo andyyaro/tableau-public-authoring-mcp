@@ -47,7 +47,7 @@ MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 4096
 
 #: Entries actually listed in the response. The hard cap above bounds memory;
-#: this bounds the reply, which is a separate problem — 4096 names at the ZIP
+#: this bounds the reply, which is a separate problem - 4096 names at the ZIP
 #: format's 64 KB-per-name limit is a quarter-gigabyte of JSON.
 MAX_REPORTED_ENTRIES = 512
 
@@ -211,7 +211,7 @@ def _central_directory_entry_count(path: Path) -> int | None:
     """Entry count from the end-of-central-directory record, or None if unreadable.
 
     Read by hand, from the tail of the file, because the count has to be known
-    *before* ``zipfile.ZipFile(path)`` is constructed — that constructor is what
+    *before* ``zipfile.ZipFile(path)`` is constructed - that constructor is what
     walks the central directory and builds one ZipInfo per entry, so by the time
     a ZipFile object exists the allocation the cap is meant to prevent has
     already happened.
@@ -332,7 +332,7 @@ def inspect_twbx(path: Path) -> dict:
 
     # A .twbx has exactly one root-level .twb, and which one Tableau opens when
     # there are several is not something this function gets to decide. The loop
-    # used to just overwrite `twb` each time, so the LAST match won silently —
+    # used to just overwrite `twb` each time, so the LAST match won silently -
     # a caller that then read that .twb was inspecting an attacker's choice of
     # document while a different one might be what Tableau loads.
     roots = out["root_twb_entries"]

@@ -1,6 +1,6 @@
 """Overwrite-protection tests for publishing.existing.
 
-Every network call is mocked — a test suite must never touch the real Tableau
+Every network call is mocked - a test suite must never touch the real Tableau
 Public, and must certainly never publish. The primary fixtures below are the
 **verbatim response bodies** captured from
 ``https://public.tableau.com/public/apis/workbooks?profileName=demo.analyst&start=0&count=2&visibility=NON_HIDDEN``

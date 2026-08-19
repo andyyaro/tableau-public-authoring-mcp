@@ -1,4 +1,4 @@
-# Threat Model — Tableau Public Authoring MCP
+# Threat Model - Tableau Public Authoring MCP
 
 **Date:** 2026-07-26
 **Scope:** local MCP server that generates Tableau workbooks, drives the Tableau
@@ -36,7 +36,7 @@ Four boundaries matter:
 
 ## Threats and mitigations
 
-### T1 — XML injection via spec fields
+### T1 - XML injection via spec fields
 A workbook name, worksheet name, or calculated-field formula containing
 `"`, `<`, `&`, or `]]>` could break out of its node and inject arbitrary XML.
 
@@ -44,7 +44,7 @@ A workbook name, worksheet name, or calculated-field formula containing
 attributes; escaping is performed by the serializer. No f-string or `.replace()`
 ever produces markup. Enforced by `tests/unit/test_security.py::test_xml_metacharacters`.
 
-### T2 — ZIP slip on packaging or inspection
+### T2 - ZIP slip on packaging or inspection
 A crafted entry name (`../../../.ssh/authorized_keys`) could escape the extraction
 root; a crafted CSV path could be written to an arbitrary archive location.
 
@@ -52,7 +52,7 @@ root; a crafted CSV path could be written to an arbitrary archive location.
 inside the destination root before read or write; absolute paths and `..`
 segments are rejected. Entries are written with explicit, sanitised arcnames.
 
-### T3 — Path traversal on inputs/outputs
+### T3 - Path traversal on inputs/outputs
 `csv_path` or `output.directory` could point outside the user's intended area, or
 at a sensitive file.
 
@@ -65,12 +65,12 @@ before any I/O.
 required to resolve *inside* it, checked post-`resolve()` so a symlink within the
 base pointing outside is rejected. Relative paths are therefore the stricter of
 the two forms: an absolute path may still address anything the user's account
-can read, which is deliberate — reading the user's own data from wherever they
+can read, which is deliberate - reading the user's own data from wherever they
 keep it is the tool's job. `TABLEAU_MCP_ALLOWED_ROOTS` constrains absolute paths
 too; `TABLEAU_MCP_WORKSPACE` supplies a default base so a deployment can require
 relative paths throughout.
 
-### T4 — Shell injection through automation
+### T4 - Shell injection through automation
 Worksheet or workbook names flow into AppleScript sent to `osascript`.
 
 **Mitigation:** no `shell=True` anywhere; `subprocess` is always called with an
@@ -79,7 +79,7 @@ command line. Values crossing into AppleScript are escaped for AppleScript strin
 literals, and names are additionally constrained by schema pattern to a safe
 character class.
 
-### T5 — Credential exposure
+### T5 - Credential exposure
 The publish flow interacts with a sign-in surface.
 
 **Mitigation:** the server never reads, requests, types, stores, or logs a
@@ -87,7 +87,7 @@ credential. It detects *whether* a sign-in window is present and hands off to th
 user. No Keychain access. No credential appears in any tool output, log, or
 document. If sign-in is required the run pauses at a visible checkpoint.
 
-### T6 — Machine-identifying data leaking into a published artifact
+### T6 - Machine-identifying data leaking into a published artifact
 Publishing is public; a `.twb` embedding `<home>/...` or a username would
 leak it worldwide.
 
@@ -95,8 +95,8 @@ leak it worldwide.
 test asserts generated XML contains no absolute path, no home directory, and no
 system username. Verified pre-publish, not just pre-commit.
 
-### T7 — Destructive or misdirected UI automation
-Synthetic events could hit the wrong window — including one of the user's own
+### T7 - Destructive or misdirected UI automation
+Synthetic events could hit the wrong window - including one of the user's own
 workbooks that happens to be open at the time.
 
 **Mitigation:** automation targets the process by **bundle identifier**
@@ -104,7 +104,7 @@ workbooks that happens to be open at the time.
 acting, never closes or saves windows it did not open, and takes no action if the
 frontmost window is unrecognised. It never interacts with other applications.
 
-### T8 — Accidental publication / overwrite
+### T8 - Accidental publication / overwrite
 Publishing is irreversible.
 
 **Mitigation:** `publish_to_tableau_public` is annotated destructive, defaults to
@@ -112,7 +112,7 @@ Publishing is irreversible.
 timestamped name, and refuses any name matching an existing user workbook. A
 dry-run mode reports exactly what would happen without acting.
 
-### T9 — Untrusted CSV content
+### T9 - Untrusted CSV content
 A CSV could be enormous, contain a formula-injection payload (`=cmd|...`), or hold
 sensitive data.
 
@@ -129,11 +129,11 @@ it, because it stops anyone from building the control.
 
 **Residual risk, stated plainly.** A CSV is embedded verbatim into the `.twbx`,
 and `publish_to_tableau_public` can then make that archive world-readable. Nothing
-inspects the CSV for sensitive content — the server cannot know what is sensitive.
+inspects the CSV for sensitive content - the server cannot know what is sensitive.
 Choosing what to publish remains the user's decision, which is why publication
 requires `confirm_publish` and a collision check rather than an automatic gate.
 
-### T10 — Supply chain
+### T10 - Supply chain
 Dependencies execute in-process.
 
 **Mitigation:** minimal dependency set (`mcp`, `jsonschema`); everything else is

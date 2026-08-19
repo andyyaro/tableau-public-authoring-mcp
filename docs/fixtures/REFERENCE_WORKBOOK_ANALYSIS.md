@@ -31,7 +31,7 @@ Every lead in the master prompt was re-checked rather than assumed. All confirme
 | 12 `<worksheet>` blocks | ~94,800 | 18% |
 | everything else | ~17,000 | 3% |
 
-The bulk is mechanical data-source scaffolding — and most of *that* is the
+The bulk is mechanical data-source scaffolding - and most of *that* is the
 `<extract>` block, which exists because publishing creates extracts. Design-bearing
 worksheet blocks are only 5.5-10.8 KB each. This is what makes template-derived
 compilation viable.
@@ -39,7 +39,7 @@ compilation viable.
 ## Mark types present (7 distinct)
 
 `Bar` x2, `Square` x3, `Line` x2, `Shape` x2, `Circle` x1, `GanttBar` x1,
-`Automatic` x1 — effectively a pattern library in a single file.
+`Automatic` x1 - effectively a pattern library in a single file.
 
 ## Structures the compiler adopted
 
@@ -71,7 +71,7 @@ machine identifiers before packaging.
 
 ## Corrections the fixture forced
 
-Two things Tableau **writes** but **rejects on load** — the writer is more permissive
+Two things Tableau **writes** but **rejects on load** - the writer is more permissive
 than the loader:
 
 - `<object-graph>` inside `<datasource>`

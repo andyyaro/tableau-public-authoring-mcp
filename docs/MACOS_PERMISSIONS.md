@@ -25,5 +25,5 @@ Or call the `get_tableau_public_app_status` tool, which reports
 
 ## Note on CGEvent
 
-Posting synthetic HID events (`CGEventPost`) — required because Tableau is a Qt app
-that ignores Accessibility clicks — is itself gated by Accessibility permission.
+Posting synthetic HID events (`CGEventPost`) - required because Tableau is a Qt app
+that ignores Accessibility clicks - is itself gated by Accessibility permission.

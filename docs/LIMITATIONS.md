@@ -1,6 +1,6 @@
 # Limitations
 
-Honest inventory. Nothing here is speculative — each item was hit during development.
+Honest inventory. Nothing here is speculative - each item was hit during development.
 
 ## 1. `.twbx` packaging is not byte-reproducible
 
@@ -39,14 +39,14 @@ rejects them on load. The writer is more permissive than the loader.
   `CGEvent` HID clicks activate menu items. This cost several failed approaches
   and is now encoded in `desktop/tableau_app.real_click`.
 - `AXSelected` is not exposed on menu items, so keyboard menu navigation cannot be
-  verified before committing — it is therefore not used.
+  verified before committing - it is therefore not used.
 
 ## 4. Window targeting is fragile
 
 Opening many workbooks leaves minimised windows that `open -a` will not reliably
 raise. The publisher mitigates the *danger* with a hard precondition
 (`assert_target_frontmost`) that refuses to invoke publish unless the intended
-workbook is the frontmost document — but it cannot always *make* it frontmost.
+workbook is the frontmost document - but it cannot always *make* it frontmost.
 Practical guidance: keep one workbook open when publishing.
 
 ## 5. Publishing cannot be automated end-to-end without a UI
@@ -62,7 +62,7 @@ Tableau Public 2026.2.0 and confirmed to render marks.
 A real gap surfaced while verifying, and has since been **resolved**. Worksheets
 now accept a `detail` array compiled to `<lod column='[federated.x].[none:Field:nk]'/>`
 inside `<encodings>`, so a scatter with `Status` on Color and `Site Name` on Detail
-draws one mark per site (12) instead of one per Status value (3) — confirmed in
+draws one mark per site (12) instead of one per Status value (3) - confirmed in
 Tableau. The compiler deliberately keeps the `none:` derivation there rather than
 the `attr:` promotion tooltips receive, because raising the level of detail is
 exactly what Detail is for. That asymmetry is visible in Tableau's own files: the
@@ -109,7 +109,7 @@ Invoking `Save to Tableau Public As...` by clicking the menu item proved
 unworkable, even with correct coordinates:
 
 * a menu item's AX geometry is only valid while the **same** `osascript` call holds
-  the menu open — query it from a separate call and you get `(0, 0)`;
+  the menu open - query it from a separate call and you get `(0, 0)`;
 * the File menu's width varies with the recent-files list, so the click point moves;
 * even a correctly-computed dwell-then-click on the highlighted item frequently did
   nothing.
@@ -130,14 +130,14 @@ had already been replaced.
 
 The other two were in workbook cleanup, and came from a wrong belief written into
 `window_control` as documentation: that a window present in `All` but absent from
-`OnScreenOnly` is *minimised*. It is not — it is **destroyed**. Every workbook
+`OnScreenOnly` is *minimised*. It is not - it is **destroyed**. Every workbook
 Tableau has ever opened leaves a husk at exactly `218x161` at `(-234, 367)`. A
 minimised document keeps a Dock tile, and that tile **is** on-screen, so the
 on-screen list alone finds minimised windows perfectly well.
 
 Because the code trusted the `All` list, cleanup:
 
-1. aimed at husks instead of live windows — target selection picks the largest
+1. aimed at husks instead of live windows - target selection picks the largest
    match, and a husk (35,098 px²) outranks a Dock tile (~23,000 px²), producing the
    error "is minimized off-screen ... and offers no on-screen tile to click" about
    workbooks that were open and perfectly reachable; and
@@ -146,8 +146,8 @@ Because the code trusted the `All` list, cleanup:
    reported as a failure.** A live run closed nine workbooks and reported eight of
    them as errors.
 
-Proof: with one workbook open, the same title appeared twice — live at `1291x949`
-and as a husk — and a screenshot showed a single real Tableau window while Quartz
+Proof: with one workbook open, the same title appeared twice - live at `1291x949`
+and as a husk - and a screenshot showed a single real Tableau window while Quartz
 reported twenty-six documents. Every workbook named in those errors was sitting in
 Tableau's *recent files* list.
 

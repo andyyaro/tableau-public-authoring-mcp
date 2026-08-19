@@ -11,7 +11,7 @@ HOW IT WORKS
 ------------
 1. The window screenshot (``screencapture -x -o -l <window id>``) is decoded to
    straight RGBA8 with CoreGraphics/ImageIO.
-2. A rectangle of the image is cropped to the *viz canvas* — right of the
+2. A rectangle of the image is cropped to the *viz canvas* - right of the
    Marks/Filters card column, below the toolbar and shelves, above the sheet
    tabs. Everything excluded is chrome that Tableau draws whether or not the
    workbook rendered, so including it would make a blank canvas look busy.
@@ -78,7 +78,7 @@ MIN_INK_RATIO = 0.0005
 # Fraction of sampled canvas pixels that must be *coloured*, required for every
 # template except text_table (whose marks are black text). The row above it in
 # the table is the reason this exists: a canvas showing axis labels and headers
-# and no marks measures 0.0068 ink — comfortably "not blank" — and 0.00000
+# and no marks measures 0.0068 ink - comfortably "not blank" - and 0.00000
 # colour. Sparse marks still measure 5x this floor.
 MIN_CHROMA_RATIO = 0.0002
 

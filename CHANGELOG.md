@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0] — 2026-07-27
+## [0.1.0] - 2026-07-27
 
 First working release. Authors Tableau workbooks, validates them in the real
 Tableau Public application, and publishes through the visible desktop workflow.
@@ -8,7 +8,7 @@ Tableau Public application, and publishes through the visible desktop workflow.
 ### Added
 - Declarative workbook spec (v0.1) with strict validation, unknown-key rejection
 - `.twb` compiler using structured XML generation (no string splicing)
-- Hyper extract generation — required, Tableau Public rejects live connections
+- Hyper extract generation - required, Tableau Public rejects live connections
 - `.twbx` packaging with ZIP-slip protection and deterministic `.twb` output
 - Worksheet templates: `bar`, `line`, `text_table`, `heatmap`, `scatter`, `circle`
 - Calculated fields, categorical filters, color/size/label/tooltip, titles

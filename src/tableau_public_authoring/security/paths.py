@@ -14,9 +14,9 @@ the check that the *build* pipeline performs, not as a chokepoint for the server
 roots" as an asset, but by default there is no allowlist: any readable ``.csv``
 and any writable directory on the machine is accepted, and ``resolve_output_dir``
 enforces a *blocklist* of places we refuse to write, which is a strictly weaker
-thing. That default is deliberate — the tool's entire job is to read the user's
+thing. That default is deliberate - the tool's entire job is to read the user's
 own data from wherever the user keeps it, and a hardcoded allowlist would make it
-useless — but the consequence is concrete: a ``.csv`` that is a symlink onto
+useless - but the consequence is concrete: a ``.csv`` that is a symlink onto
 someone else's file is read without complaint and its contents are embedded in a
 ``.twbx`` that the publish flow may then make world-readable.
 
@@ -28,7 +28,7 @@ sitting inside an allowed root but pointing outside it is rejected.
 
 **Relative paths and ``base_dir``.** A spec may declare one absolute
 ``base_dir``; every relative path in it resolves against that directory. This
-exists for ergonomics — it turns N absolute paths into one — but the security
+exists for ergonomics - it turns N absolute paths into one - but the security
 property runs the other way, and is the reason relative paths are accepted at
 all: a relative path is **contained**. It is resolved against the base and then
 required to still be inside it, so it can address nothing outside, whereas an
@@ -39,7 +39,7 @@ pointing out of it are both rejected.
 
 A relative path with no base is an error, never a fall back to the process
 working directory. This server is launched by an MCP client, so its CWD is
-whatever directory that client happened to be started in — resolving against it
+whatever directory that client happened to be started in - resolving against it
 would make the same spec mean different files on different machines, which is
 both a correctness bug and a way to read something the author never named.
 """
@@ -144,8 +144,8 @@ def _is_under(prefix: str, target: str) -> bool:
     """Component-wise prefix test, case-insensitively.
 
     Case matters here, and getting it wrong made the blocklist decorative. The
-    default macOS APFS volume is case-INsensitive — ``os.stat("/System").st_ino``
-    and ``os.stat("/SYSTEM").st_ino`` are the same inode — so the old
+    default macOS APFS volume is case-INsensitive - ``os.stat("/System").st_ino``
+    and ``os.stat("/SYSTEM").st_ino`` are the same inode - so the old
     case-sensitive ``startswith`` rejected ``/System/Library/X`` while happily
     passing ``/system/library/X``, which names the identical directory.
 
@@ -232,7 +232,7 @@ def resolve_input_file(
     ``must_suffix`` accepts one extension, ``suffixes`` accepts several; either
     may be given. ``suffixes`` exists because ``server.py`` already calls this
     with ``suffixes=(".twbx",)``, which raised ``TypeError: unexpected keyword
-    argument`` — ``inspect_local_workbook`` could not run at all.
+    argument`` - ``inspect_local_workbook`` could not run at all.
 
     Symlinks are followed and the checks below apply to the target, but note that
     there is no root allowlist unless ``TABLEAU_MCP_ALLOWED_ROOTS`` is set: see
@@ -248,8 +248,8 @@ def resolve_input_file(
 
     p, contained_by = _anchor(raw, base_dir, "path")
 
-    # resolve() collapses '..' and follows symlinks, so everything below —
-    # including the allowlist — is asserted about the file that will actually be
+    # resolve() collapses '..' and follows symlinks, so everything below -
+    # including the allowlist - is asserted about the file that will actually be
     # opened, not about the name the caller typed.
     resolved = p.resolve(strict=False)
 
@@ -343,7 +343,7 @@ def safe_archive_name(name: str) -> str:
     """Validate an archive entry name (ZIP-slip guard, T2).
 
     Rejects POSIX **and** Windows traversal. On POSIX ``Path("..\\..\\evil").parts``
-    is a single component — the backslashes are ordinary characters — so the
+    is a single component - the backslashes are ordinary characters - so the
     ``".." in parts`` test called it safe, and so did the test for ``C:\\Windows\\x``.
     That mattered beyond packaging: this function is the general ZIP-slip guard,
     and ``inspect_twbx`` uses it to sort the entries of an **untrusted** archive

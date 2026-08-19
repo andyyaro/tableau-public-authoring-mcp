@@ -1,4 +1,4 @@
-# Change history — the reasoning behind each release
+# Change history - the reasoning behind each release
 
 Pull-request write-ups, preserved as documentation.
 
@@ -12,7 +12,7 @@ replaced; the technical content is otherwise verbatim.
 
 ---
 
-## Tableau Public authoring MCP — v0.1 MVP (verified end-to-end)
+## Tableau Public authoring MCP - v0.1 MVP (verified end-to-end)
 
 *Merged 2026-07-27.*
 
@@ -29,9 +29,9 @@ HTTP 200, and renders 12 marks with calculated-field colours.
 
 Three findings constrained the design before any preference applied:
 
-1. **No publishing API exists for Tableau Public** — the REST API covers
+1. **No publishing API exists for Tableau Public** - the REST API covers
    Server/Cloud only.
-2. **No official library can create a workbook** — the Document API states
+2. **No official library can create a workbook** - the Document API states
    verbatim it cannot create files from scratch.
 3. **Tableau Public ships no AppleScript dictionary** (verified: no `.sdef`, no
    `NSAppleScriptEnabled`, no URL scheme).
@@ -58,9 +58,9 @@ rejects.
 
 Plus two semantic failures producing loadable-but-blank workbooks:
 
-- **Tableau Public requires extracts** (`Error 3C242D89`) — every CSV is converted
+- **Tableau Public requires extracts** (`Error 3C242D89`) - every CSV is converted
   to `.hyper`.
-- **Tooltip dimensions need `attr:` derivation** — with `none:` the pill turns red
+- **Tooltip dimensions need `attr:` derivation** - with `none:` the pill turns red
   and the canvas goes blank. Isolated by a controlled three-way bisect.
 
 ### Automation findings
@@ -70,7 +70,7 @@ Plus two semantic failures producing loadable-but-blank workbooks:
 - The **Window menu lists worksheets, not documents**.
 - Tableau is **Qt**: `click` and `AXPress` on menu items report success and do
   nothing. Only real **CGEvent** HID clicks work.
-- Publishing lives on **File**, not Server, in the Public edition — Tableau's docs
+- Publishing lives on **File**, not Server, in the Public edition - Tableau's docs
   describe Desktop Professional.
 
 ### Safety
@@ -78,7 +78,7 @@ Plus two semantic failures producing loadable-but-blank workbooks:
 - `publish_to_tableau_public` requires `confirm_publish: true`, defaults
   `overwrite: false`, supports `dry_run`.
 - A hard precondition refuses to publish unless the intended workbook is the
-  frontmost document — this caught a real near-miss against the user's own
+  frontmost document - this caught a real near-miss against the user's own
   workbook, which was verified unchanged afterwards.
 - No credentials are ever read, typed, or stored.
 - XML injection, ZIP slip, path traversal and machine-identifier leakage are
@@ -99,7 +99,7 @@ Plus two semantic failures producing loadable-but-blank workbooks:
 ### Honest gaps
 
 `line`, `heatmap`, `scatter`, `circle` compile and pass structural validation but
-were not individually screenshot-verified — recorded as *partially supported*
+were not individually screenshot-verified - recorded as *partially supported*
 rather than claimed. No dashboards. `.twbx` is not byte-reproducible (Hyper writes
 non-deterministic state); the `.twb` is.
 
@@ -125,7 +125,7 @@ Both messages were false. The workbooks had closed.
 
 One wrong belief, written into `window_control`'s module docstring as fact: *a window present in `kCGWindowListOptionAll` but absent from `OnScreenOnly` is minimized.* It is **destroyed**.
 
-Every workbook Tableau has ever opened leaves a husk at exactly `218x161` at `(-234, 367)`. A minimized document keeps a **Dock tile**, and that tile *is* on-screen — so the on-screen list finds minimized windows perfectly well and nothing is lost by ignoring the `All` list.
+Every workbook Tableau has ever opened leaves a husk at exactly `218x161` at `(-234, 367)`. A minimized document keeps a **Dock tile**, and that tile *is* on-screen - so the on-screen list finds minimized windows perfectly well and nothing is lost by ignoring the `All` list.
 
 Trusting `All` broke closing twice over:
 
@@ -135,7 +135,7 @@ Trusting `All` broke closing twice over:
 ### Evidence
 
 - With one workbook open, the same title appeared **twice**: live at `1291x949`, and as a husk.
-- A screenshot showed a **single** real Tableau window while Quartz reported **26 documents** — every "open" workbook was in Tableau's *recent files* list.
+- A screenshot showed a **single** real Tableau window while Quartz reported **26 documents** - every "open" workbook was in Tableau's *recent files* list.
 - Against the live app, `document_windows()` went from 26 entries to 5, matching the screenshot exactly.
 
 ### Changes
@@ -146,7 +146,7 @@ Trusting `All` broke closing twice over:
 - `close_all_generated` accepts `known_paths` so a minimized workbook is raised via `open -a` rather than a Dock-tile click, and reports `already_closed`
 - Live teardown supplies the paths it built, and reports against what is **still open** rather than what it attempted
 
-The test fixtures encoded the same wrong belief — `doc(offscreen=True)` built the exact husk signature while every test read it as "minimized". Renamed to `stale=True`, with separate Dock-tile fixtures for genuinely minimized windows.
+The test fixtures encoded the same wrong belief - `doc(offscreen=True)` built the exact husk signature while every test read it as "minimized". Renamed to `stale=True`, with separate Dock-tile fixtures for genuinely minimized windows.
 
 ### Verification
 
@@ -179,9 +179,9 @@ Five commits: the `map` template, remediation of every finding from a six-agent 
 
 ### 1. `map` template
 
-Plots latitude/longitude symbol marks on Tableau's background map. **Verified live** — basemap with state boundaries, 12 marks, one per site, each in its correct state.
+Plots latitude/longitude symbol marks on Tableau's background map. **Verified live** - basemap with state boundaries, 12 marks, one per site, each in its correct state.
 
-Three things separate a map from a scatter plot, and each fails **silently** — no error dialog, just a wrong-looking sheet — so all three are pinned by tests:
+Three things separate a map from a scatter plot, and each fails **silently** - no error dialog, just a wrong-looking sheet - so all three are pinned by tests:
 
 | Missing | Result |
 |---|---|
@@ -189,35 +189,35 @@ Three things separate a map from a scatter plot, and each fails **silently** —
 | `semantic-role="[Geographical].[Latitude]"` | an ordinary scatter plot |
 | `aggregation="Avg"` | one mark, at the average of all coordinates |
 
-`geographic_role()` already existed as **dead code**, and was wrong — latitude and longitude both mapped to `[Country].[Name]` — while the capability report advertised "geographic roles are inferred". Now true.
+`geographic_role()` already existed as **dead code**, and was wrong - latitude and longitude both mapped to `[Country].[Name]` - while the capability report advertised "geographic roles are inferred". Now true.
 
 ### 2. Audit remediation
 
 Every finding independently verified before action; each fix has a regression test that fails without it. **All of them passed the 263-test suite that existed at the time.**
 
 #### Could publish or destroy the wrong thing
-- **`assert_target_frontmost` matched by substring** — publishing `Q3_Sales` while `Q3_Sales_Draft` was frontmost would push the draft to the public internet under the intended name, and report success.
-- **Overwrite protection was fail-open two ways** — gated on an optional argument, and wrapped in `except ImportError: pass`.
-- **The ZIP-slip guard ran after the destructive writes** — it overwrote and deleted files, *then* raised.
-- **`Cmd+W` and `Cmd+Shift+S` never checked Tableau was the active application** — every guard ranked only Tableau's own windows, so all passed while the user was in a browser.
-- **`_await_published_url` matched on title alone** — every overwrite publish reported verified success whether or not the upload worked.
-- **A failed title still clicked Save** — publishing under a filename-derived name the collision check never examined.
+- **`assert_target_frontmost` matched by substring** - publishing `Q3_Sales` while `Q3_Sales_Draft` was frontmost would push the draft to the public internet under the intended name, and report success.
+- **Overwrite protection was fail-open two ways** - gated on an optional argument, and wrapped in `except ImportError: pass`.
+- **The ZIP-slip guard ran after the destructive writes** - it overwrote and deleted files, *then* raised.
+- **`Cmd+W` and `Cmd+Shift+S` never checked Tableau was the active application** - every guard ranked only Tableau's own windows, so all passed while the user was in a browser.
+- **`_await_published_url` matched on title alone** - every overwrite publish reported verified success whether or not the upload worked.
+- **A failed title still clicked Save** - publishing under a filename-derived name the collision check never examined.
 
 #### Silent corruption
-- **Tableau identifiers had no escaping** — a column named `Val]ue` corrupted its own references; a crafted header could redirect one column's shelf reference to another field.
+- **Tableau identifiers had no escaping** - a column named `Val]ue` corrupted its own references; a crafted header could redirect one column's shelf reference to another field.
 - **A blank CSV line became a row of NULLs** in the extract and every viz.
-- **`find_window` matched substrings** — validation could go green against a different workbook, screenshot included.
+- **`find_window` matched substrings** - validation could go green against a different workbook, screenshot included.
 - **`read_error_dialog` returned the clipboard** with no evidence it came from Tableau.
 
 #### Dead code presented as working
-- `fit` was validated, never passed to `Worksheet`, *and* rejected as an unknown key — unusable three ways at once.
+- `fit` was validated, never passed to `Worksheet`, *and* rejected as an unknown key - unusable three ways at once.
 - `output.package_twbx` parsed and ignored.
 - `data_dir_ref` accepted and discarded, so a standalone `.twb` **could not resolve its data**. Now it can.
 - `empty_worksheet` validation could never fire.
 - The JSON Schema was never loaded and had already drifted stricter than the server. It is now **generated** from the spec model, pinned by a drift test, and published as the MCP input schema.
 
 #### Tests that could not fail
-Two determinism tests built twice to the **same path** and compared the file to itself — they would have passed with random zone ids. Twelve window tests asserted a disproven model. Three capabilities marked "verified" had zero coverage.
+Two determinism tests built twice to the **same path** and compared the file to itself - they would have passed with random zone ids. Twelve window tests asserted a disproven model. Three capabilities marked "verified" had zero coverage.
 
 #### Hardening
 Real path containment (opt-in via `TABLEAU_MCP_ALLOWED_ROOTS`, since a hardcoded allowlist would break the tool's actual job), case-folded blocklist, Windows-traversal rejection, bounded untrusted-archive inspection, XML entity-expansion defence (a 282-byte file expanding to 100,000 chars is now rejected), streamed extract rows with the row cap actually enforced, and blocking calls moved off the MCP event loop.
@@ -226,7 +226,7 @@ Real path containment (opt-in via `TABLEAU_MCP_ALLOWED_ROOTS`, since a hardcoded
 
 Adding `known_paths` so teardown could raise a minimized workbook with `open -a` made the raise succeed and the **close** unreliable: `open -a` rearranges windows without making the document active, so the window server reports the target as frontmost while Tableau's active-document state points elsewhere, and `Cmd+W` closes a different workbook.
 
-Reproduced rather than inferred — closing `CloseTestA` via `open -a` failed twice over 21s while consuming two blank `Book` windows. The Dock-tile click succeeded first time. Click is now preferred; `open -a` is the fallback.
+Reproduced rather than inferred - closing `CloseTestA` via `open -a` failed twice over 21s while consuming two blank `Book` windows. The Dock-tile click succeeded first time. Click is now preferred; `open -a` is the fallback.
 
 I also shipped a `TypeError` in `inspect_local_workbook` (a `suffixes=` argument that didn't exist, so the tool crashed on every call). Caught by an agent, fixed, now covered end to end.
 
@@ -234,7 +234,7 @@ I also shipped a `TypeError` in `inspect_local_workbook` (a `suffixes=` argument
 
 Removed three session artifacts that were pure machine records (private repo URL, published viz URL, home paths). Scrubbed profile name, display name, personal workbook name and home paths from docs, source, tests and fixtures; renamed `EV_WORKBOOK_*` fixtures to `REFERENCE_WORKBOOK_*`; dropped the account URL from the generated schema's `$id`. `.gitignore` now covers `hyperd*.log` (an 82 MB one was untracked).
 
-**README now opens with three screenshots** of workbooks this server generated — dashboard, symbol map, bar chart — from synthetic fixture data. No personal workbooks appear anywhere.
+**README now opens with three screenshots** of workbooks this server generated - dashboard, symbol map, bar chart - from synthetic fixture data. No personal workbooks appear anywhere.
 
 > ⚠️ **Not addressed by this PR:** git history and the diffs of PRs #1–#3 are stored by GitHub and survive any history rewrite. Making this repo public exposes them. A fresh repository seeded from this tree is the only option that closes both.
 

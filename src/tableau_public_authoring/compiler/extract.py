@@ -31,8 +31,7 @@ def _hyper_log_dir() -> Path:
     is wherever the client happened to launch it: this repository accumulated a
     48 MB ``hyperd.log`` in its root that way. The log also records absolute
     paths of every database it touches, so it is exactly the machine-identifying
-    material T6 exists to keep out of things the user might hand to someone else
-    — which is an argument against dropping it in the user's output directory
+    material T6 exists to keep out of things the user might hand to someone else which is an argument against dropping it in the user's output directory
     too.
 
     A fixed directory under the OS temp dir keeps it off the repo, off the
@@ -108,7 +107,7 @@ def build_hyper(csv_path: Path, fields: list[Field], out_path: Path) -> int:
     changed in between and on nobody calling ``build_hyper`` directly. And the
     entire CSV was accumulated into a ``list[list]`` before a single row was
     inserted, so a file at the 64 MB ``MAX_CSV_BYTES`` ceiling became on the
-    order of a gigabyte of live Python objects — the tuples, the per-cell str,
+    order of a gigabyte of live Python objects - the tuples, the per-cell str,
     int, date objects, all of it resident at once.
     """
     try:

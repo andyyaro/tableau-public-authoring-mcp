@@ -1,7 +1,7 @@
 """Preflight check: is this machine actually able to run the server?
 
 Everything this server does beyond generating XML depends on conditions no
-Python import can establish — Tableau installed, two macOS permissions granted
+Python import can establish - Tableau installed, two macOS permissions granted
 to *the process that will run the server*, and a native extension that is easy
 to install into the wrong environment.
 
@@ -18,7 +18,7 @@ So this runs standalone, before the server is wired into anything:
 
 Permissions are granted per-executable. Running this from a terminal checks the
 *terminal's* permissions, which is why the report prints the interpreter it is
-running under — that is the identity macOS will prompt about, and it must be the
+running under - that is the identity macOS will prompt about, and it must be the
 same one registered with the MCP client.
 """
 
@@ -59,7 +59,7 @@ class Report:
 
     def render(self) -> str:
         width = max((len(c.name) for c in self.checks), default=0)
-        lines = ["", "Tableau Public Authoring MCP — preflight", ""]
+        lines = ["", "Tableau Public Authoring MCP - preflight", ""]
         for c in self.checks:
             lines.append(f"  [{_MARK[c.state]}] {c.name.ljust(width)}  {c.detail}")
         lines.append("")
@@ -88,7 +88,7 @@ def _check_platform() -> Check:
         return Check(
             "platform",
             FAIL,
-            f"{sys.platform} — this server drives the macOS Tableau Public app",
+            f"{sys.platform} - this server drives the macOS Tableau Public app",
             "There is no headless or cross-platform path: Tableau Public has no\n"
             "publishing API, so publishing is done through the real desktop UI.",
         )
@@ -126,7 +126,7 @@ def _check_quartz() -> Check:
         return Check(
             "quartz (pyobjc)",
             FAIL,
-            "not importable — window discovery would silently find nothing",
+            "not importable - window discovery would silently find nothing",
             "uv pip install 'pyobjc-framework-Quartz>=10.0'\n"
             "Install it into the SAME interpreter shown above, not a different venv.",
         )
@@ -140,7 +140,7 @@ def _check_hyper() -> Check:
         return Check(
             "tableauhyperapi",
             FAIL,
-            "not importable — no workbook can be built",
+            "not importable - no workbook can be built",
             "uv pip install 'tableauhyperapi>=0.0.25080'\n"
             "Tableau Public rejects any workbook that is not extract-backed\n"
             "(Error Code 3C242D89), so every CSV must become a .hyper.",
@@ -156,7 +156,7 @@ def _check_accessibility() -> Check:
     return Check(
         "accessibility",
         FAIL,
-        "not granted — keystrokes and clicks would go nowhere",
+        "not granted - keystrokes and clicks would go nowhere",
         "System Settings > Privacy & Security > Accessibility, then add:\n"
         f"    {sys.executable}\n"
         "Grant it to the interpreter above, not to Tableau. Permissions are\n"
@@ -168,7 +168,7 @@ def _check_accessibility() -> Check:
 def _check_screen_recording() -> Check:
     """Screen Recording cannot be queried directly; capture and look at the result.
 
-    A denied process still gets a successful screencapture call — the image is
+    A denied process still gets a successful screencapture call - the image is
     just blank or desktop-only. So the check takes a real capture and inspects
     the bytes rather than trusting the exit code.
     """
@@ -191,7 +191,7 @@ def _check_screen_recording() -> Check:
             return Check(
                 "screen recording",
                 FAIL,
-                "capture produced nothing — validation screenshots would be blank",
+                "capture produced nothing - validation screenshots would be blank",
                 "System Settings > Privacy & Security > Screen Recording, then add:\n"
                 f"    {sys.executable}",
             )

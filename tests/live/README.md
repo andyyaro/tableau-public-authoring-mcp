@@ -3,7 +3,7 @@
 Tests that drive the **real Tableau Public desktop app**. They are the automated
 form of the manual check that found every important defect in this project: six
 that stopped a workbook loading, and two where it loaded perfectly and rendered
-nothing at all. Unit tests cannot see either class of failure — the `.twb` is
+nothing at all. Unit tests cannot see either class of failure - the `.twb` is
 well-formed, deterministic and structurally valid in both cases.
 
 ## What is in here
@@ -34,7 +34,7 @@ TABLEAU_LIVE_TESTS=1 uv run pytest tests/live   # name the directory, not the ma
 
 Every line above is checked: `-m live` selects 15 tests, `-m "live and not
 publish"` selects 11, `-m publish` selects 4. The publish-flow tests carry
-**both** markers, so `-m live` includes them — an earlier version of this file
+**both** markers, so `-m live` includes them - an earlier version of this file
 claimed the opposite.
 
 The environment-variable route needs the conftest's help, because
@@ -57,7 +57,7 @@ the end.
 | Screen Recording permission for the same process | tier skips |
 | A signed-in Tableau Public session | only the publish tests skip |
 
-Permission is granted to whatever binary is actually running pytest — your
+Permission is granted to whatever binary is actually running pytest - your
 terminal, or your IDE. See `docs/MACOS_PERMISSIONS.md`.
 
 **It never fails merely because the environment is wrong.** A Linux box, a
@@ -74,14 +74,14 @@ they cover different failures:
 2. **`pytest_collection_modifyitems` in `conftest.py`.** It covers what a marker
    filter structurally cannot: a test added to this directory that nobody
    marked. Such a test used to run in a bare `pytest` and launch Tableau. It is
-   marked during collection now — before pytest's filter runs — and reported, so
+   marked during collection now - before pytest's filter runs - and reported, so
    the omission is visible rather than silently patched. If there is no marker
    filter in force at all (`addopts` removed, or `-m ""`), the same hook
    deselects the tier itself instead.
 
 Neither is decoration. The hook was inert for a long time: it asked
 `if "live" in markexpr`, and `addopts` makes that string `"not live"`, which
-contains `live` — so it decided the tier had been requested and returned without
+contains `live` - so it decided the tier had been requested and returned without
 acting on *every single run*.
 
 Selecting the tier takes a deliberate `-m live` or `TABLEAU_LIVE_TESTS=1`.
@@ -97,7 +97,7 @@ headless mode and no publishing API.
 Expect **several minutes**. Each case compiles a workbook, materialises a Hyper
 extract, launches or re-uses Tableau, waits for a window, and screenshots it
 until the canvas has ink. Tableau windows will appear and take focus while it
-runs. Do not use the machine at the same time — a stray click changes which
+runs. Do not use the machine at the same time - a stray click changes which
 document is frontmost, which is exactly what the publish guard is designed to
 notice.
 
@@ -116,7 +116,7 @@ markers so either filter excludes them.
 Every workbook this tier creates is named `LiveTest_<runid>_<slug>`. Teardown
 calls `window_control.close_all_generated(["LiveTest"])`, which only ever matches
 document windows whose title stem *starts with* that prefix. Your own workbooks
-are never candidates — **so do not name a real workbook `LiveTest...`**.
+are never candidates - **so do not name a real workbook `LiveTest...`**.
 
 Teardown passes `known_paths`, the stem-to-file map it built while running, so a
 minimised workbook can be raised with `open -a` instead of by clicking its Dock
@@ -126,7 +126,7 @@ The final line reports against what is **still open**, not against what teardown
 attempted, and it accounts for every workbook the run created: some are closed by
 teardown and the rest were already closed by the time it ran. An earlier version
 counted destroyed windows as open and announced eight failures for nine
-successful closes — see limitation 10 in `docs/LIMITATIONS.md`.
+successful closes - see limitation 10 in `docs/LIMITATIONS.md`.
 
 This cleanup is not tidiness. A session that left roughly eighteen workbooks open
 wedged Tableau to the point where it stopped accepting new documents, which looks
@@ -137,7 +137,7 @@ to stay above twelve and comfortably below the eighteen that wedged Tableau;
 raising it further is not the fix if a run starts hitting it.
 
 If teardown reports workbooks still open, close them in Tableau by hand before the
-next run. The most likely reason is Tableau asking whether to save — this project
+next run. The most likely reason is Tableau asking whether to save - this project
 never answers that prompt, because "Don't Save" destroys work.
 
 Tableau opens a fresh blank `Book<N>` whenever it closes the last visible document,
@@ -147,7 +147,7 @@ this tier's cleanup contract, which touches only what it created.
 ## How "not blank" is decided
 
 `canvas.py`. The window screenshot is decoded to RGBA with CoreGraphics (no
-Pillow and no numpy are installed, and neither was added — `pyobjc` is already a
+Pillow and no numpy are installed, and neither was added - `pyobjc` is already a
 hard requirement for enumerating Tableau's windows). A rectangle of the *canvas*
 is cropped, excluding the Data pane, the Marks card, the toolbar, the worksheet
 title and the sheet tabs, because all of those draw whether or not the viz did.
@@ -156,13 +156,13 @@ Each sampled pixel is background (bright and colourless: white canvas or a pale
 gridline) or ink. Coloured ink is counted separately, which is what separates
 "the marks drew" from "only the black axis labels drew".
 
-* `MIN_INK_RATIO = 0.0005` — a blank canvas measures **0.00000**; there is no
+* `MIN_INK_RATIO = 0.0005` - a blank canvas measures **0.00000**; there is no
   noise floor to clear. Real vizzes measure an order of magnitude above this.
-* `MIN_CHROMA_RATIO = 0.0002` — required for every template except `text_table`,
+* `MIN_CHROMA_RATIO = 0.0002` - required for every template except `text_table`,
   whose marks are black text.
 
 Neither number is a guess. `_calibration.py` draws synthetic Tableau-shaped
-captures and reports what the analyser measures on them — **no Tableau and no GUI
+captures and reports what the analyser measures on them - **no Tableau and no GUI
 involved**, so you can re-run it anywhere before changing a threshold:
 
 ```bash

@@ -136,7 +136,7 @@ class _ZoneIds:
 def _tile(count: int, total: int, offset: int) -> list[tuple[int, int]]:
     """Split ``total`` grid units into ``count`` contiguous spans from ``offset``.
 
-    Siblings inside a layout container must tile their parent's extent exactly —
+    Siblings inside a layout container must tile their parent's extent exactly -
     no gap, no overlap (§4.1). Integer division alone does not sum back to the
     total for most counts, so the final span absorbs the rounding remainder.
     Returns ``(start, size)`` pairs.
@@ -244,7 +244,7 @@ class WorkbookCompiler:
         # This parameter used to be named `_unused` and was ignored: the method
         # recomputed `data_dir_for(ds_id)` and so hardcoded the .twbx-internal
         # layout into every file it wrote. A bare .twb therefore pointed at a
-        # `Data/<id>/` directory that only exists inside the package — verified on
+        # `Data/<id>/` directory that only exists inside the package - verified on
         # a real artifact (output/TplLine.twb says directory="Data/sites" while
         # output/Data/ does not exist), so a standalone .twb could not find its
         # data at all.
@@ -454,7 +454,7 @@ class WorkbookCompiler:
             return _qualified(ds_name, inst)
 
         # A map's axes ARE its coordinates: latitude on rows, longitude on cols.
-        # That assignment is fixed by the projection, not a caller preference —
+        # That assignment is fixed by the projection, not a caller preference -
         # swapping them plots the transpose of the world. parse_spec guarantees
         # both are present and averaged for this template.
         if ws.template == "map":
@@ -467,7 +467,7 @@ class WorkbookCompiler:
         size_ref = use(ws.size)
         label_ref = use(ws.label)
 
-        # The Detail shelf. Refs are passed through UNCHANGED — deliberately the
+        # The Detail shelf. Refs are passed through UNCHANGED - deliberately the
         # opposite of _tooltip_ref below. A dimension on Detail keeps derivation
         # "None" (``[none:Field:nk]``) because it *is* the grouping key: it is
         # what raises the mark count from one-per-Color-value to one-per-entity.
@@ -498,7 +498,7 @@ class WorkbookCompiler:
         # filter over a QUANTITATIVE instance:
         #   <filter class="categorical" column="[federated.…].[none:Value:qk]">
         # Tableau loads that file and draws a checkbox list over a continuous
-        # field — a nonsense card, with no error anywhere. Refusing is the safer
+        # field - a nonsense card, with no error anywhere. Refusing is the safer
         # trade: a wrong filter fails silently in front of the user, a
         # CompileError fails loudly in front of the caller, who can still express
         # the intent with a calculated field. Emitting class="quantitative"
@@ -517,7 +517,7 @@ class WorkbookCompiler:
                 raise CompileError(
                     f"worksheet {ws.name!r}: cannot filter on {fname!r}. This compiler emits "
                     f"categorical (level-members) filters over a field's discrete values, and "
-                    f"{fname!r} is a {fld.datatype} measure — the filter would render as a "
+                    f"{fname!r} is a {fld.datatype} measure - the filter would render as a "
                     f"checkbox list over a continuous field, which Tableau accepts and draws "
                     f"as a nonsense card. Filter on a dimension instead, or add a "
                     f"calculated_field that buckets {fname!r} into named ranges (e.g. "
@@ -610,7 +610,7 @@ class WorkbookCompiler:
         # The guard used to be `not label_ref and col_refs`, which keyed off the
         # wrong shelf: _mark_requirements("text_table") is (rows=True,
         # cols=False), so the canonical text table has no columns at all and the
-        # fallback never fired. Verified — rows=["Site", {"field": "Value",
+        # fallback never fired. Verified - rows=["Site", {"field": "Value",
         # "aggregation": "Sum"}] compiled to <encodings /> with nothing on Text,
         # plus mark-labels-show=true labelling nothing. And when `columns` WAS
         # present it took col_refs[0] blindly, which is a dimension whenever the
@@ -642,7 +642,7 @@ class WorkbookCompiler:
         # The converse is just as useless and used to happen on every text table
         # with no measure anywhere: labels switched on with nothing on Text to
         # draw. The rule is now emitted only where something can actually be
-        # labelled — a heatmap keeps it unconditionally because its Color measure
+        # labelled - a heatmap keeps it unconditionally because its Color measure
         # is what gets labelled.
         if label_ref or text_fallback or ws.template == "heatmap":
             pstyle = ET.SubElement(pane, "style")
@@ -669,7 +669,7 @@ class WorkbookCompiler:
         emitted; if 2026.2.0 requires ``type-v2`` every zone here is rejected.
 
         Child order is ``layout-options?, style, size, zones`` and is NOT
-        negotiable — Tableau's loader enforces a DTD content model and rejects
+        negotiable - Tableau's loader enforces a DTD content model and rejects
         misordered children outright. ``repository-location``, ``simple-id`` and
         ``devicelayouts`` are published-only and deliberately omitted.
 
@@ -765,7 +765,7 @@ class WorkbookCompiler:
 
         for placed, (x, y, w, h) in zip(dash.worksheets, boxes, strict=True):
             # A worksheet zone is identified by having a 'name' and NO 'type'
-            # attribute. The link is a bare name string — there is no id-based
+            # attribute. The link is a bare name string - there is no id-based
             # reference in the format (§4.4).
             attrs = {"h": str(h), "id": ids.take(), "name": placed.worksheet}
             if not placed.show_title:
@@ -901,7 +901,7 @@ class WorkbookCompiler:
                     )
 
             # How the viz fills its canvas. Stored as <viewpoint><zoom> AFTER
-            # <cards> — not on the worksheet, which is why it is easy to miss.
+            # <cards> - not on the worksheet, which is why it is easy to miss.
             # Without it Tableau uses "Standard", which draws a small viz tucked
             # into the top-left corner instead of filling the view.
             zoom = ZOOM_TYPE.get(ws.fit or default_fit(ws.template))
@@ -949,8 +949,8 @@ def _remote_type(datatype: str) -> str:
 
 
 # NOTE: ``write_twb(spec, out_path, *, data_dir_ref)`` was deleted, not fixed.
-# It had no callers anywhere in src/, tests/ or docs/, and its contract —
-# "compile and write a bare .twb" — cannot be honoured by a function that only
+# It had no callers anywhere in src/, tests/ or docs/, and its contract -
+# "compile and write a bare .twb" - cannot be honoured by a function that only
 # writes XML. A standalone .twb is usable only if the .hyper extract and the CSV
 # it names exist next to it, so producing one means building extracts and staging
 # data: the pipeline in compiler/build.py, not a one-line writer. Keeping it

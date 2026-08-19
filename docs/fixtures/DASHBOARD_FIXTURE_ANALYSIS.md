@@ -1,4 +1,4 @@
-# Dashboard XML Forensics — reverse-engineering `<dashboards>` from real fixtures
+# Dashboard XML Forensics - reverse-engineering `<dashboards>` from real fixtures
 
 **Why this document exists.** The canonical reference workbook for this project
 (`REFERENCE_WORKBOOK_ANALYSIS.md`, `dashboard_count: 0`) contains no dashboards, so the
@@ -9,7 +9,7 @@ memory or documentation.
 **Method.** Pure file analysis. No Tableau GUI was driven, opened, or activated.
 Every `.twbx` was downloaded through the `tableau-public` reader MCP, unpacked
 with `unzip`, and parsed with `xml.etree.ElementTree`. Every claim below is
-labelled **[V]** verified-from-fixture or **[I]** inferred — read the labels.
+labelled **[V]** verified-from-fixture or **[I]** inferred - read the labels.
 
 ---
 
@@ -21,13 +21,13 @@ The three workbooks named in the task brief were all **refused**: author
 
 | Workbook | Author | `allowDataAccess` | Outcome |
 |---|---|---|---|
-| `BlankBasicBusinessDashboardTemplate` | dashboard.temple | `false` | refused — `"The workbook author has disabled data downloads"` |
+| `BlankBasicBusinessDashboardTemplate` | dashboard.temple | `false` | refused - `"The workbook author has disabled data downloads"` |
 | `BlankPremiumBusinessDashboardTemplates` | dashboard.temple | `false` | refused (not attempted after flag check) |
 | `BasicBusinessDashboardTemplate` | dashboard.temple | `false` | refused (not attempted after flag check) |
 
 Fallback via `search_visualizations` produced three downloadable fixtures.
 
-### PRIMARY fixture — used for the skeleton
+### PRIMARY fixture - used for the skeleton
 
 | Field | Value |
 |---|---|
@@ -43,13 +43,13 @@ Fallback via `search_visualizations` produced three downloadable fixtures.
 | `source-build` | `2019.4.3 (20194.20.0125.0835)` |
 | Contents | 3 worksheets, 1 dashboard, 17 zones |
 
-**Why this one is primary:** its document `version` is `18.1` — *identical* to the
+**Why this one is primary:** its document `version` is `18.1` - *identical* to the
 `DOC_VERSION` this compiler already pins (`compiler/workbook.py:22`). Tableau's
 loader content model keys off the document version, not the writing build, so an
 18.1 dashboard is the correct structural target even though the build that wrote
 it (2019.4.3) is older than our target runtime (2026.2.0).
 
-### CORROBORATING fixtures — used to separate invariants from version drift
+### CORROBORATING fixtures - used to separate invariants from version drift
 
 | Workbook | Author | SHA-256 | Doc ver | Build | Zones |
 |---|---|---|---|---|---|
@@ -58,12 +58,12 @@ it (2019.4.3) is older than our target runtime (2026.2.0).
 
 The 8.3 fixture is the most minimal dashboard obtainable and is quoted below as
 a lower bound on required structure. The 10.4 fixture is written by build
-2023.1.0 — the closest available to our 2026.2.0 target — and is the evidence
+2023.1.0 - the closest available to our 2026.2.0 target - and is the evidence
 that no new required elements appeared between 2019 and 2023.
 
 > **Provenance caveat [V].** `simpledashboard` (author `prittam`) and
 > `SimpleDashboard` (author `ushka`) were downloaded to the same cache directory
-> on a case-insensitive macOS filesystem and collapsed to one file — both paths
+> on a case-insensitive macOS filesystem and collapsed to one file - both paths
 > hash to `cb940bb7…`. The surviving file is whichever landed second. The 8.3
 > content is therefore attributed to one of those two authors with low
 > confidence. This does not affect any structural finding; the 8.3 file is used
@@ -89,7 +89,7 @@ This slots cleanly into the compiler's existing `build()`, which currently emits
 
 ---
 
-## 3. `<dashboard>` element — attributes and child order
+## 3. `<dashboard>` element - attributes and child order
 
 **[V]** `<dashboard>` has exactly one attribute in all fixtures: `name`. No
 `id`, no `caption`, no `version`.
@@ -111,7 +111,7 @@ layout-options? , style , size , datasources? , datasource-dependencies* , zones
 
 **[V] Ordering is not fully rigid.** `layout-options` precedes
 `repository-location` in the 10.4 fixture and follows it in the 18.1 fixture.
-Since we omit `repository-location` entirely, this ambiguity is moot — but it is
+Since we omit `repository-location` entirely, this ambiguity is moot - but it is
 evidence that Tableau's content model tolerates at least some reordering around
 that element. **[I]** I did *not* verify that `style`/`size`/`zones` may be
 reordered, and the compiler must not try: emit them in the order above.
@@ -120,7 +120,7 @@ reordered, and the compiler must not try: emit them in the order above.
 10.4 fixture it carries one rule:
 `<style><style-rule element="dash-title"><format attr="border-style" value="solid"/></style-rule></style>`.
 An empty `<style/>` is therefore sufficient. **[I]** Whether `<style>` is
-*mandatory* is unverified — it is present in 3/3 fixtures, so emit it.
+*mandatory* is unverified - it is present in 3/3 fixtures, so emit it.
 
 **[V]** `<datasources>` / `<datasource-dependencies>` inside `<dashboard>` are
 present only when the dashboard hosts a zone that references a *field*
@@ -143,12 +143,12 @@ the worksheet-level ones the compiler already builds:
 
 ## 4. The zone tree
 
-### 4.1 Coordinate space — **0..100000 normalised grid, absolute, per-dashboard**
+### 4.1 Coordinate space - **0..100000 normalised grid, absolute, per-dashboard**
 
 This is the single most important finding for a compiler, so the evidence is
 laid out in full.
 
-**Evidence 1 [V] — the root zone is always exactly the full grid.** In every
+**Evidence 1 [V] - the root zone is always exactly the full grid.** In every
 dashboard in every fixture, spanning doc versions 8.3, 10.4 and 18.1, the
 outermost zone is:
 
@@ -158,7 +158,7 @@ outermost zone is:
 
 and no zone anywhere has any of `x`, `y`, `w`, `h` exceeding 100000.
 
-**Evidence 2 [V] — children carry ABSOLUTE coordinates, not parent-relative.**
+**Evidence 2 [V] - children carry ABSOLUTE coordinates, not parent-relative.**
 The horizontal `layout-flow` container `id=20` in the 18.1 fixture sits at
 `x=468 w=99064`. Its six children tile it exactly:
 
@@ -175,19 +175,19 @@ Sum of child widths = 99064 = parent width, and the first child's `x` equals the
 *parent's* `x` (468), not 0. If coordinates were parent-relative the first child
 would be at `x=0`. They are absolute in the dashboard's own grid.
 
-**Evidence 3 [V] — the units are not pixels, proven by axis asymmetry.** The
+**Evidence 3 [V] - the units are not pixels, proven by axis asymmetry.** The
 root zone declares a single uniform `<format attr="margin" value="8"/>`. That one
 8-pixel margin appears in the grid as **468 horizontally** and **885
 vertically**. A pixel unit cannot render one margin as two different numbers.
-Solving `8 / (n/100000)` gives an implied canvas of 1709.4 × 904.0 px — a
+Solving `8 / (n/100000)` gives an implied canvas of 1709.4 × 904.0 px - a
 plausible maximized window, and consistent with this dashboard's
 `<size sizing-mode="automatic"/>`. The grid is normalised independently on each
 axis against the dashboard's current extent.
 
-**Evidence 4 [V] — cross-check on a fixed-size dashboard.** The 8.3 fixture
+**Evidence 4 [V] - cross-check on a fixed-size dashboard.** The 8.3 fixture
 declares `<size maxwidth="1100" minwidth="1100" maxheight="700" minheight="700"/>`
 and lays out two side-by-side worksheets at `w=49819` and `w=49817`
-(`x=0` and `x=49819`). `49819/100000 × 1100 px = 548.0 px` — precisely half of
+(`x=0` and `x=49819`). `49819/100000 × 1100 px = 548.0 px` - precisely half of
 the 1100 px canvas less the gutter. The normalised value maps onto the declared
 pixel size exactly as predicted.
 
@@ -217,16 +217,16 @@ children always precede it.
 | `type` | Meaning | Notable attributes |
 |---|---|---|
 | *(absent)* | **a worksheet zone** | `name` = worksheet name; optional `show-title` |
-| `layout-basic` | plain container (the root, and grouping wrappers) | — |
+| `layout-basic` | plain container (the root, and grouping wrappers) | - |
 | `layout-flow` | horizontal/vertical stack | `param="horz"` \| `param="vert"`, optional `layout-strategy-id="distribute-evenly"` |
-| `title` | the dashboard title card | — |
+| `title` | the dashboard title card | - |
 | `text` | free text box (8.3 fixture) | child `<formatted-text>` |
 | `filter` | quick-filter card | `name`, `param`, `mode`, `show-all`, `show-filter-state` |
 | `highlighter` | highlight-action card | `name`, `param` |
 | `color` | colour legend | `name`, `param`, `pane-specification-id` |
 | `paramctrl` | parameter control | `param="[Parameters].[Parameter 1]"`, `mode`, `custom-title` |
 | `bitmap` | image | `param="Image/2.PNG"`, `is-centered`, `is-scaled` |
-| `empty` | blank spacer | — |
+| `empty` | blank spacer | - |
 
 > **[V] `type-v2` DOES NOT EXIST in any fixture.** `grep -c 'type-v2'` returns
 > **0** for all four downloaded `.twb` files, across doc versions 8.3, 10.4 and
@@ -235,7 +235,7 @@ children always precede it.
 > the attribute is used at document version 18.1. **The compiler must emit
 > `type`, not `type-v2`.** See RISKS §9.1.
 
-### 4.4 How a zone references a worksheet — **the discriminator is absence of `type`**
+### 4.4 How a zone references a worksheet - **the discriminator is absence of `type`**
 
 **[V]** A worksheet is placed by a zone whose `name` attribute is the worksheet's
 `name`, and which has **no `type` attribute at all**:
@@ -247,7 +247,7 @@ children always precede it.
 ```
 
 **[V] Critical subtlety:** `name` is *also* used by `filter`, `highlighter` and
-`color` zones — but there it names the worksheet the card *belongs to*, not a
+`color` zones - but there it names the worksheet the card *belongs to*, not a
 worksheet to render. In the 18.1 fixture all six `name`-bearing zones carry a
 valid worksheet name, yet only the three with no `type` are worksheet views:
 
@@ -267,7 +267,7 @@ zone breaks silently if a worksheet is renamed.
 **[V]** `show-title="false"` on a worksheet zone hides that sheet's title inside
 the dashboard. Default (attribute absent, or `"true"` in the 8.3 fixture) shows it.
 
-### 4.5 `id` — small sequential integers, NOT hashes
+### 4.5 `id` - small sequential integers, NOT hashes
 
 **[V]** Zone ids are small positive integers, unique within a dashboard, and
 sparse/non-contiguous (Tableau reuses a monotonic counter and leaves gaps as
@@ -279,13 +279,13 @@ zones are deleted):
 | 10.4 `Sample DAshboard ` | 1..5,8,9,11..14,16..21,25..34 |
 | 8.3 `Sales Overview 2013` | 1,2,3,5,6,8,9,11,12 |
 
-**[V]** Ids are **not** ordered by tree position — the root zone is `id=4` in the
+**[V]** Ids are **not** ordered by tree position - the root zone is `id=4` in the
 18.1 fixture while its descendants are 3, 5, 7. Contiguity and ordering are
 therefore *not* required.
 
 **[V]** In the 18.1 fixture the `<devicelayout>` block **reuses** the main
 layout's ids (19, 13, 15, 12, 3, 22, 10) and adds two new ones (29, 30) for its
-own containers — so ids are scoped to the whole `<dashboard>`, shared across
+own containers - so ids are scoped to the whole `<dashboard>`, shared across
 layouts.
 
 > **Implication for this codebase:** `compiler/ids.py::stable_id` produces
@@ -329,8 +329,8 @@ equally.
 is always the root. The 18.1 fixture alternates
 `layout-basic → layout-flow → layout-basic → layout-flow …` down the tree; the
 extra `layout-basic` wrappers appear to be artefacts of interactive editing.
-**[I]** A generator does not need to reproduce that alternation — the 8.3
-fixture nests `layout-flow` directly inside `layout-flow` — but this is inferred
+**[I]** A generator does not need to reproduce that alternation - the 8.3
+fixture nests `layout-flow` directly inside `layout-flow` - but this is inferred
 from a different document version and is a real risk (§9.2).
 
 **[V]** `fixed-size="<px>"` + `is-fixed="true"` pins a zone to an absolute pixel
@@ -354,8 +354,8 @@ size along the container's flow axis while siblings absorb the remainder. Note
       param="[federated.1rzz…].[sum:Profit:qk]" type="color" w="16501" x="83031" y="885">
 ```
 
-**[V]** `param` is the **fully-qualified column-instance reference** —
-`[<datasource-name>].[<derivation>:<Field>:<typesuffix>]` — byte-identical in
+**[V]** `param` is the **fully-qualified column-instance reference** -
+`[<datasource-name>].[<derivation>:<Field>:<typesuffix>]` - byte-identical in
 form to what `workbook.py::_qualified(_instance_name(...))` already produces for
 worksheet shelves and for the `param` on `<card type="filter">`.
 
@@ -386,7 +386,7 @@ generator targeting 18.1 should emit alongside the four bounds.
 
 **[I]** `sizing-mode` values `automatic`, `fixed`, `vscroll` are the three I
 observed. Tableau's UI also offers "Range", whose serialisation I did not
-capture — do not emit anything outside the three verified values.
+capture - do not emit anything outside the three verified values.
 
 ---
 
@@ -415,7 +415,7 @@ common way to get it wrong:
 ```
 
 **[V]** Omitting the `type="title"` zone means the title text exists in the file
-but occupies no space on the canvas. The 8.3 fixture does the opposite — it has
+but occupies no space on the canvas. The 8.3 fixture does the opposite - it has
 **no** `<layout-options>` and instead renders its heading with a
 `type="text"` zone holding its own `<formatted-text>`:
 
@@ -460,18 +460,18 @@ worksheet windows. Verbatim, 18.1:
 | | `class="worksheet"` | `class="dashboard"` |
 |---|---|---|
 | children | `cards` (+ `viewpoint`, `simple-id`) | `viewpoints`, `active` (+ `simple-id`) |
-| `<cards>` | **required** — the shelf/legend furniture | **absent** — a dashboard has no shelves |
+| `<cards>` | **required** - the shelf/legend furniture | **absent** - a dashboard has no shelves |
 | per-sheet state | one `<viewpoint>` | one `<viewpoints>` wrapper containing a `<viewpoint name="…">` per contained worksheet |
 | `<active>` | absent | `<active id="-1" />` |
 
 **[V]** The dashboard window carries `maximized="true"`. In the 10.4 fixture the
 dashboard window is listed **first**, before the worksheet windows, and every
-worksheet window carries `hidden="true"` — that is how a workbook publishes with
+worksheet window carries `hidden="true"` - that is how a workbook publishes with
 only the dashboard tab visible. In the 18.1 fixture the dashboard window is last
 and no window is hidden.
 
-**[V]** The 8.3 fixture uses an entirely different shape —
-`<window class="dashboard"><zones><zone name="…"><viewpoint>…` — which is
+**[V]** The 8.3 fixture uses an entirely different shape -
+`<window class="dashboard"><zones><zone name="…"><viewpoint>…` - which is
 obsolete at 18.1. Do not copy it.
 
 **[I]** I did not verify whether `<viewpoints>` is *required* or may be empty.
@@ -480,27 +480,27 @@ fixture and is the conservative choice.
 
 ---
 
-## 8. Published-only elements — must NOT be emitted
+## 8. Published-only elements - must NOT be emitted
 
 The project already knows about `repository-location`, `simple-id`,
 `object-graph`, and `extract/@object-id`. Dashboards add more.
 
 | Element | Where it appears | Verdict |
 |---|---|---|
-| `repository-location` | on `<workbook>` **and on every `<dashboard>`** | **[V]** omit — publish-server metadata, contains a public.tableau.com URL and numeric repo id |
-| `simple-id` | on `<dashboard>`, on each `<window>`, on each `<worksheet>` | **[V]** omit — a `{GUID}`; also non-deterministic, which would break `test_determinism` |
-| `devicelayouts` / `devicelayout` | on `<dashboard>` (18.1) | **[V]** carries `auto-generated="true"` — Tableau regenerates phone layouts itself. Omit. |
+| `repository-location` | on `<workbook>` **and on every `<dashboard>`** | **[V]** omit - publish-server metadata, contains a public.tableau.com URL and numeric repo id |
+| `simple-id` | on `<dashboard>`, on each `<window>`, on each `<worksheet>` | **[V]** omit - a `{GUID}`; also non-deterministic, which would break `test_determinism` |
+| `devicelayouts` / `devicelayout` | on `<dashboard>` (18.1) | **[V]** carries `auto-generated="true"` - Tableau regenerates phone layouts itself. Omit. |
 | `document-format-change-manifest` | root (18.1) | **[V]** upgrade bookkeeping (`AutoCreateAndUpdateDSDPhoneLayouts`, `WindowsPersistSimpleIdentifiers`, …). Omit. |
 | `thumbnails` | root (8.3) | **[V]** base64 PNG previews the server generates. Omit. |
 | `shared-views` | root (10.4) | **[V]** server-side artefact. Omit. |
 | `mapsources` | root (18.1) | **[V]** not dashboard-related; the EV reference has it too. Omit. |
-| `layout-cache` | on `<zone>` | **[I]** *probably* a recomputed cache; unverified. Omit — see §9.4. |
+| `layout-cache` | on `<zone>` | **[I]** *probably* a recomputed cache; unverified. Omit - see §9.4. |
 | `forceUpdate` | on 8.3 `type="text"` zone | **[I]** looks like a dirty-flag. Omit. |
-| `<actions>` | root, when the dashboard has filter actions | **[V]** a real user-authored feature, **not** publish metadata — but out of scope for v0.1. Omit and document as unsupported. |
+| `<actions>` | root, when the dashboard has filter actions | **[V]** a real user-authored feature, **not** publish metadata - but out of scope for v0.1. Omit and document as unsupported. |
 
 ---
 
-## 9. Minimum viable `<dashboard>` — annotated skeleton
+## 9. Minimum viable `<dashboard>` - annotated skeleton
 
 Two worksheets stacked vertically under a title, on a fixed 1200×800 canvas.
 Every element below is present in the primary 18.1 fixture; published-only
@@ -643,12 +643,12 @@ id · **UC** user content · **PS** position/size · **OMIT** unsupported-must-o
 | `zone/@type="filter"` + `@name` `@param` `@mode` `@show-all` `@show-filter-state` | UC | quick-filter card; `param` = qualified column-instance |
 | `zone/@type="color"` + `@name` `@param` `@pane-specification-id` | UC | colour legend |
 | `zone/@type="highlighter"` + `@name` `@param` | UC | highlight card |
-| `zone/@type="paramctrl"` + `@param` `@mode` `@custom-title` | UC | parameter control — no parameter support in v0.1 |
-| `zone/@type="bitmap"` + `@param` `@is-centered` `@is-scaled` | UC | image — requires packaging an `Image/` entry |
+| `zone/@type="paramctrl"` + `@param` `@mode` `@custom-title` | UC | parameter control - no parameter support in v0.1 |
+| `zone/@type="bitmap"` + `@param` `@is-centered` `@is-scaled` | UC | image - requires packaging an `Image/` entry |
 | `zone/@type="empty"` | IB | spacer |
 | `zone/@fixed-size` + `@is-fixed` | PS | **pixels**, along the flow axis only |
 | `zone/zone-style/format/@attr/@value` | IB | always the last child; `border-*` + `margin` quartet |
-| `zone/layout-cache/*` | OMIT | probably a recomputed cache — unverified, do not emit |
+| `zone/layout-cache/*` | OMIT | probably a recomputed cache - unverified, do not emit |
 | `zone/@forceUpdate` | OMIT | 8.3-only dirty flag |
 | `windows/window/@class="dashboard"` `@name` `@maximized` | IB | `maximized="true"` |
 | `window/viewpoints/viewpoint/@name` | IB | one per contained worksheet |
@@ -672,7 +672,7 @@ Ordered, and shaped to the existing architecture: `ElementTree` nodes only (no
 string building), deterministic ids, layer-1 semantic validation in
 `models/spec.py`, layer-2 structural validation in `validation/structure.py`.
 
-### Step 1 — `compiler/ids.py`: add an integer zone-id allocator
+### Step 1 - `compiler/ids.py`: add an integer zone-id allocator
 
 `stable_id()` is unsuitable (base-36, 28 chars). Add a tiny deterministic
 counter class rather than a hash:
@@ -691,7 +691,7 @@ class ZoneIdAllocator:
 One allocator **per dashboard** (ids are dashboard-scoped, §4.5). Determinism
 comes from the deterministic tree walk, and `test_determinism` still passes.
 
-### Step 2 — `models/spec.py`: dashboard spec model
+### Step 2 - `models/spec.py`: dashboard spec model
 
 Add dataclasses beside `Worksheet`:
 
@@ -717,7 +717,7 @@ class Dashboard:
 Add `dashboards: list[Dashboard]` to `WorkbookSpec` (default `[]`, so no
 existing caller breaks).
 
-### Step 3 — `models/spec.py`: replace the hard rejection
+### Step 3 - `models/spec.py`: replace the hard rejection
 
 `parse_spec` currently does (lines 384-389):
 
@@ -730,23 +730,23 @@ Replace with a parse loop that validates, at minimum:
 
 - `name` via `_check_name`, unique across dashboards **and** disjoint from
   worksheet names (both land in `<windows>` keyed by name);
-- every `item.worksheet` exists in `seen_ws` — the zone→worksheet link is by
+- every `item.worksheet` exists in `seen_ws` - the zone→worksheet link is by
   name string and fails silently otherwise (§4.4);
 - `direction in ("vertical", "horizontal")`, `sizing_mode in ("fixed", "automatic")`;
 - `width`/`height` positive integers within a sane range when `sizing_mode == "fixed"`;
 - at least one item, and for a `filter`/`legend` item, that `field` exists in the
   referenced worksheet's data source;
 - **all worksheets referenced by one dashboard resolve to data sources whose
-  `<datasource>`/`<datasource-dependencies>` the dashboard can declare** —
+  `<datasource>`/`<datasource-dependencies>` the dashboard can declare** -
   needed for filter/legend zones (§3).
 
 Also add `SUPPORTED_DASHBOARD_ITEMS` next to `SUPPORTED_TEMPLATES` and keep
 `docs/architecture/CAPABILITY_BOUNDARY.md` in lockstep, per the comment at
 `spec.py:23`.
 
-### Step 4 — `compiler/workbook.py`: a normalised layout helper
+### Step 4 - `compiler/workbook.py`: a normalised layout helper
 
-Pure function, no XML — easy to unit-test:
+Pure function, no XML - easy to unit-test:
 
 ```python
 GRID = 100000
@@ -766,21 +766,21 @@ def _tile(count: int, total: int, offset: int) -> list[tuple[int, int]]:
 The "last span absorbs the remainder" rule is what guarantees
 `sum(sizes) == total`, which the fixture shows Tableau relies on.
 
-### Step 5 — `compiler/workbook.py`: `_build_dashboard(dash)`
+### Step 5 - `compiler/workbook.py`: `_build_dashboard(dash)`
 
 Emit, strictly in this order (§3):
 
-1. `layout-options/title/formatted-text/run` — only if `dash.title`; reuse the
+1. `layout-options/title/formatted-text/run` - only if `dash.title`; reuse the
    existing `<run>` pattern from `_build_worksheet`.
-2. `<style/>` — empty.
-3. `<size>` — `sizing-mode="fixed"` plus the four pixel bounds, or
+2. `<style/>` - empty.
+3. `<size>` - `sizing-mode="fixed"` plus the four pixel bounds, or
    `sizing-mode="automatic"` alone.
-4. `<datasources>` + `<datasource-dependencies>` — **only** if any item is a
+4. `<datasources>` + `<datasource-dependencies>` - **only** if any item is a
    filter/legend. Reuse `self._ds_names`, `_instance_name`, `_qualified`; the
    `<column>`/`<column-instance>` emitter is a near-copy of the block at
    `workbook.py:326-355` and should be factored into a shared helper rather than
    duplicated.
-5. `<zones>` — root `<zone type="layout-basic" x=0 y=0 w=100000 h=100000
+5. `<zones>` - root `<zone type="layout-basic" x=0 y=0 w=100000 h=100000
    id=alloc.take()>`, containing one
    `<zone type="layout-flow" param="vert"|"horz">`, containing a `type="title"`
    zone (if titled) plus one zone per item, coordinates from `_tile`.
@@ -788,7 +788,7 @@ Emit, strictly in this order (§3):
 
 A small `_zone_style(margin)` helper emits the four `<format>` children.
 
-### Step 6 — `compiler/workbook.py`: wire into `build()`
+### Step 6 - `compiler/workbook.py`: wire into `build()`
 
 After the `worksheets` loop (line 436) and **before** `windows` (line 438):
 
@@ -800,7 +800,7 @@ if self.spec.dashboards:
 ```
 
 Then, inside the existing `windows` block, append one dashboard window per
-dashboard — **no `<cards>`** (§7):
+dashboard - **no `<cards>`** (§7):
 
 ```python
 for dash in self.spec.dashboards:
@@ -816,27 +816,27 @@ Note `maximized="true"` currently goes on the *first worksheet* window
 (line 443). Decide deliberately: if a dashboard exists it should be the maximized
 window, and the worksheet windows should drop `maximized`.
 
-### Step 7 — `validation/structure.py`: layer-2 checks
+### Step 7 - `validation/structure.py`: layer-2 checks
 
 Extend `validate_generated` with dashboard-specific `Issue`s:
 
-- `dashboard_mismatch` — `<dashboard>` names in the file match `spec.dashboards`;
-- `unresolved_zone_worksheet` (**error**) — every zone with `@name` and no
+- `dashboard_mismatch` - `<dashboard>` names in the file match `spec.dashboards`;
+- `unresolved_zone_worksheet` (**error**) - every zone with `@name` and no
   `@type` names a worksheet that exists in `<worksheets>`. This is the
   highest-value check, because the reference is a bare name string;
-- `zone_out_of_range` (**error**) — any `x/y/w/h` outside `0..100000`;
-- `zone_tiling` (**error**) — children of a `layout-flow` do not sum to the
+- `zone_out_of_range` (**error**) - any `x/y/w/h` outside `0..100000`;
+- `zone_tiling` (**error**) - children of a `layout-flow` do not sum to the
   parent's extent on the flow axis;
-- `missing_dashboard_window` (**error**) — a `<dashboard>` with no matching
+- `missing_dashboard_window` (**error**) - a `<dashboard>` with no matching
   `<window class="dashboard">`;
-- `dashboard_window_has_cards` (**error**) — guards against copy-paste from the
+- `dashboard_window_has_cards` (**error**) - guards against copy-paste from the
   worksheet-window builder;
-- `unresolved_dashboard_column` (**error**) — a `filter`/`color` zone whose
+- `unresolved_dashboard_column` (**error**) - a `filter`/`color` zone whose
   `@param` is not declared in the dashboard's own `<datasource-dependencies>`;
-- `published_only_element` (**error**) — assert no `repository-location`,
+- `published_only_element` (**error**) - assert no `repository-location`,
   `simple-id`, `devicelayouts` or `type-v2` anywhere in the output.
 
-### Step 8 — schema, tests, docs
+### Step 8 - schema, tests, docs
 
 - `schemas/`: add the `dashboards` array to the JSON Schema (it is currently
   accepted as a top-level key at `spec.py:182` but forced empty).
@@ -855,13 +855,13 @@ Extend `validate_generated` with dashboard-specific `Issue`s:
 
 Stated plainly, verified separated from inferred.
 
-### 12.1 No fixture was written by our target build — this is the top risk
+### 12.1 No fixture was written by our target build - this is the top risk
 **Verified:** doc `version` is `18.1` in the primary fixture, matching our pinned
 `DOC_VERSION`. **Not verified:** that build **2026.2.0** accepts this structure.
 The newest fixture available was written by 2023.1.0, three years older than the
 runtime this project targets. The compiler was built against a 2026.2.0
 worksheet fixture; the dashboard work has no such luxury. **`type-v2` is the
-specific worry** — the task brief named it, which suggests someone has seen it
+specific worry** - the task brief named it, which suggests someone has seen it
 somewhere, yet it appears in **zero** of the four downloaded files. If 2026.2.0
 requires `type-v2` on zones, everything here fails at load with a
 `no declaration found` style error. *Mitigation:* the very first implementation
@@ -878,21 +878,21 @@ inside the root `layout-basic`. My evidence for the simpler nesting comes from
 the **8.3** fixture (`layout-flow` inside `layout-flow`), a different document
 version. If 18.1 requires a `layout-basic` wrapper around each flow container,
 the plan's zone tree is wrong. *Mitigation:* if the first load fails, mirror the
-18.1 alternation exactly before changing anything else — it costs one extra zone
+18.1 alternation exactly before changing anything else - it costs one extra zone
 per level and is known-good.
 
 ### 12.3 The worksheet reference is an unvalidated name string
 **Verified:** `<zone name="Sheet Name">` with no `@type` is the *only* link
-between a dashboard and a worksheet — no id, no `worksheet=` attribute. A typo,
+between a dashboard and a worksheet - no id, no `worksheet=` attribute. A typo,
 a trailing space, or a later rename produces a file that is structurally valid,
 loads without error, and renders an empty box. Note the 10.4 fixture's dashboard
 is literally named `"Sample DAshboard "` with a trailing space, so Tableau does
 not normalise these strings. *Mitigation:* the `unresolved_zone_worksheet`
-layer-2 check in Step 7 is not optional — it is the only thing standing between a
+layer-2 check in Step 7 is not optional - it is the only thing standing between a
 rename and a silently broken dashboard.
 
 ### 12.4 Genuinely unverified specifics
-- Whether `<style/>` is **required** — present in 3/3 fixtures, so we emit it,
+- Whether `<style/>` is **required** - present in 3/3 fixtures, so we emit it,
   but I never tested removal.
 - Whether `<viewpoints>` is required, or may be empty, in the dashboard window.
 - Whether `<layout-cache>` is optional. I recommend omitting it on the inference
@@ -900,7 +900,7 @@ rename and a silently broken dashboard.
   fixtures do carry it.
 - Whether `<zone-style>` is required, or whether a zone may have none.
 - Whether zone `id`s must avoid colliding with ids used elsewhere in the
-  workbook (worksheet windows have no ids, so probably not — inferred).
+  workbook (worksheet windows have no ids, so probably not - inferred).
 - The serialisation of `sizing-mode="Range"`, which Tableau's UI offers but no
   fixture used. Do not emit it.
 - Whether `pane-specification-id` on a `color` zone must match something real in
@@ -925,5 +925,5 @@ systems in separately-named variables.
 `paramctrl` needs parameter support the project does not have; `bitmap` needs an
 `Image/` entry in the `.twbx` and a packaging change; `<actions>` needs a whole
 action model. Each is documented above so the shape is known, but none should be
-implemented from this document alone — the fixtures show one example of each,
+implemented from this document alone - the fixtures show one example of each,
 which is not enough to generalise from.

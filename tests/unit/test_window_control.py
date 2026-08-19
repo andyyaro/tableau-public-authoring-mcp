@@ -1,8 +1,8 @@
-"""Window-management tests — every OS interaction is faked.
+"""Window-management tests - every OS interaction is faked.
 
 No test here touches Quartz, osascript, `open` or the Tableau GUI: the enumerator,
 clicker, key sender, activator and opener are all injected. The window geometry in
-the fixtures is not invented — it was captured read-only from a live Tableau
+the fixtures is not invented - it was captured read-only from a live Tableau
 Public 2026.2.0 session with several test workbooks open and minimized.
 """
 
@@ -191,7 +191,7 @@ class FakeDesktop:
     """A mutable stand-in for the window server plus the HID event layer.
 
     Records every event it is asked to send, so tests can assert that a code path
-    sent *nothing* — which is the whole point of dry-run mode.
+    sent *nothing* - which is the whole point of dry-run mode.
     """
 
     def __init__(self, windows, *, on_key=None, on_click=None, on_open=None, app_active=True):
@@ -315,7 +315,7 @@ def test_an_offscreen_window_is_a_husk_not_a_minimized_document():
     check saw the title survive and reported every successful close as a failure.
 
     The corrected model is decidable because both halves are pinned here. A live
-    window is always composited — full size, or as a Dock tile — so off-screen
+    window is always composited - full size, or as a Dock tile - so off-screen
     means gone; and minimizing does NOT take a window off-screen, so nothing
     legitimate is lost by discarding what is. ``is_minimized`` still answers True
     for an off-screen window, which is backwards compatibility for that flag and
@@ -925,7 +925,7 @@ def test_close_all_generated_closes_each_workbook_once_when_it_has_two_windows()
     The assertion here used to be ``len(closed) + len(failed) == 1``, which the
     test's name promised more than: a run in which the close was refused or
     bailed out satisfied it identically, so only de-duplication was ever tested.
-    Both halves are checked now — the stem appears exactly once and in
+    Both halves are checked now - the stem appears exactly once and in
     ``closed``, nothing lands in ``failed``, exactly one Command-W is sent, and
     no window with that title survives.
 

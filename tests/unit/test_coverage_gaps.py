@@ -323,7 +323,7 @@ def test_each_source_points_at_its_own_data_directory(sites_csv, usage_csv, out_
     the caller's root and every path is the ``.twbx``-internal layout, which a
     bare ``.twb`` sitting next to its data does not have. Both leave Tableau
     finding no data and drawing nothing, and no other assertion in the suite
-    notices — which is why the root here is deliberately not spelled ``Data``.
+    notices - which is why the root here is deliberately not spelled ``Data``.
     """
     root = compile_xml(two_source_spec(sites_csv, usage_csv, out_dir))
     dirs, dbnames = {}, {}

@@ -100,7 +100,7 @@ def resolve_selection(markexpr: str, *, env_opt_in: bool) -> tuple[str, bool]:
     This is the whole opt-in decision, extracted as a pure function so it can be
     tested without running pytest inside pytest. Its predecessor asked
     ``if "live" in markexpr`` and treated the project's own default filter,
-    ``"not live"``, as "the caller asked for the live tier" — so the hook
+    ``"not live"``, as "the caller asked for the live tier" - so the hook
     returned early on every run and the second mechanism never deselected
     anything at all.
 
@@ -146,8 +146,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
        test added to ``tests/live/`` that nobody marked. Such a test would run
        in a bare ``pytest`` and launch Tableau. It is marked here, before
        pytest's own filter runs, so mechanism 1 then treats it like every other
-       live test. If mechanism 1 is missing altogether — no marker filter in
-       play at all — this hook deselects the tier outright instead.
+       live test. If mechanism 1 is missing altogether - no marker filter in
+       play at all - this hook deselects the tier outright instead.
 
     Hook order is what makes both of those work: conftest plugins are registered
     after pytest's builtins and their ``pytest_collection_modifyitems`` therefore
@@ -168,7 +168,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     live_items = [item for item in items if _in_live_tier(item)]
     unmarked = [i for i in live_items if i.get_closest_marker("live") is None]
     for item in unmarked:
-        # Not a licence to skip the marker — tests/unit/test_coverage_gaps.py
+        # Not a licence to skip the marker - tests/unit/test_coverage_gaps.py
         # fails when a module in this package forgets it. This is the net that
         # stops the mistake reaching the GUI in the meantime.
         item.add_marker(pytest.mark.live)
@@ -204,7 +204,7 @@ def _screen_recording_granted() -> bool:
 
     ``CGPreflightScreenCaptureAccess`` is the non-prompting query;
     ``CGRequestScreenCaptureAccess`` is the one that pops a system dialog and is
-    deliberately NOT used — a test run must never ambush the user with a
+    deliberately NOT used - a test run must never ambush the user with a
     permission prompt.
     """
     try:

@@ -7,7 +7,7 @@ listed as future work twice.
 ## Shipped (was on this roadmap, is no longer future work)
 
 - **Every template screenshot-verified individually.** `line`, `heatmap`,
-  `scatter` and `circle` — plus `bar`, `text_table` and `map` — are each opened
+  `scatter` and `circle` - plus `bar`, `text_table` and `map` - are each opened
   in the real Tableau Public and checked for coloured ink on the canvas by
   `tests/live/test_render_templates.py`.
   `test_all_supported_templates_are_covered` fails if a template is added to
@@ -19,7 +19,7 @@ listed as future work twice.
   See `docs/LIMITATIONS.md` §8.
 - **Window management.** `desktop/window_control.py` classifies, raises,
   un-minimises and closes specific documents, and distinguishes a live window
-  from the husk the window server keeps for a destroyed one — the misunderstanding
+  from the husk the window server keeps for a destroyed one - the misunderstanding
   that caused four separate bugs (`docs/LIMITATIONS.md` §10).
 - **Overwrite-aware publishing.** `publishing/existing.py` queries the profile's
   published workbooks before an irreversible publish, compares both the raw title
@@ -30,8 +30,8 @@ listed as future work twice.
 ## Verified by hand, not by a test
 
 Two capabilities `CAPABILITY_BOUNDARY.md` lists as verified rest on a manual
-screenshot taken once, with **no automated coverage**. They are real — the
-screenshots exist — but nothing will notice if a future change breaks them:
+screenshot taken once, with **no automated coverage**. They are real - the
+screenshots exist - but nothing will notice if a future change breaks them:
 
 | Capability | Evidence | What is missing |
 |---|---|---|

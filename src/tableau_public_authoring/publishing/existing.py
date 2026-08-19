@@ -31,7 +31,7 @@ It returned HTTP 200 and a body shaped like::
 
 Empirically confirmed behaviour of that endpoint:
 
-* ``count`` is capped at 50 — ``count=100`` returns
+* ``count`` is capped at 50 - ``count=100`` returns
   ``{"error": {"message": "must be less than or equal to 50"}}``.
 * ``nextIndex`` is the offset of the next page, or ``-1`` on the last page.
   Reading past the end returns ``contents: []`` and ``nextIndex: -1``.
@@ -41,12 +41,12 @@ Empirically confirmed behaviour of that endpoint:
 This server deliberately does **not** call the separate ``tableau-public``
 reader MCP to do this. A publish-safety precondition must not depend on another
 server being installed, configured, and reachable, so the request is issued
-directly with ``urllib.request`` (stdlib only — no new dependencies).
+directly with ``urllib.request`` (stdlib only - no new dependencies).
 
 FAIL-CLOSED POLICY
 ------------------
-If the lookup cannot complete — DNS failure, timeout, 5xx, unparseable body,
-unknown profile — we do **not** know whether a collision exists, so we must not
+If the lookup cannot complete - DNS failure, timeout, 5xx, unparseable body,
+unknown profile - we do **not** know whether a collision exists, so we must not
 say "safe". ``assert_safe_to_publish`` returns ``(False, ...)`` in that case and
 says so in the message. The only thing that turns a blocked publish into an
 allowed one is the user explicitly passing ``overwrite=True``, which is informed
@@ -79,7 +79,7 @@ USER_AGENT = "tableau-public-authoring/0.1"
 class ProfileLookupError(RuntimeError):
     """Raised when the published-workbook list cannot be determined.
 
-    Never means "no collision" — it means "unknown", which callers must treat as
+    Never means "no collision" - it means "unknown", which callers must treat as
     unsafe. Message is written to be surfaced to the user verbatim.
     """
 
@@ -161,14 +161,14 @@ def normalize_workbook_name(name: str) -> str:
     1. ``.`` becomes ``_``.
     2. ``-`` and ``_`` are kept as-is.
     3. ASCII letters and digits are kept; **case is preserved**.
-    4. Everything else is deleted — whitespace, ``&``, ``#``, ``%``, ``(``,
+    4. Everything else is deleted - whitespace, ``&``, ``#``, ``%``, ``(``,
        ``)``, ``:``, ``|``, ``,``, ``!``, ``?``, apostrophes (straight and
        curly), ``®``, and non-ASCII scripts such as Japanese.
     5. Accented Latin letters fold to their base letter first (``é`` ->
        ``e``), which is why the input is NFKD-normalised before filtering.
 
     INFERRED, NOT CONFIRMED: step 5 rests on the single ``Beyoncé's Grammys``
-    pair, so NFKD is the best-supported explanation rather than a proven one —
+    pair, so NFKD is the best-supported explanation rather than a proven one -
     it is also strictly better than plain stripping across the corpus (412 vs
     411 exact matches) and never made a pair worse. Length truncation was not
     observed and is not modelled; the longest title seen round-tripped intact.
@@ -373,7 +373,7 @@ def name_collides(profile: str, proposed_name: str, *, timeout: int = 25) -> Col
       two visually different titles ("Q1 Sales!" and "Q1 Sales") normalise to
       the same repo URL and therefore to the same public address.
 
-    Propagates ``ProfileLookupError`` — an unanswerable question is not a "no".
+    Propagates ``ProfileLookupError`` - an unanswerable question is not a "no".
     """
     published = list_published_workbooks(profile, timeout=timeout)
     proposed_norm = normalize_workbook_name(proposed_name)
@@ -434,7 +434,7 @@ def assert_safe_to_publish(
     """Hard precondition for publishing. ``(False, why)`` means: do not publish.
 
     ``overwrite=True`` is the user's explicit, informed consent to replace an
-    existing workbook, so it always returns ``True`` — including when the lookup
+    existing workbook, so it always returns ``True`` - including when the lookup
     itself failed, since the user has already accepted the outcome either way.
 
     With ``overwrite=False`` this fails CLOSED: a lookup that could not complete
@@ -452,7 +452,7 @@ def assert_safe_to_publish(
             )
         return False, (
             f"UNABLE TO VERIFY: could not determine whether {proposed_name!r} is already "
-            f"published on profile {profile!r} — {exc} "
+            f"published on profile {profile!r} - {exc} "
             f"Refusing to publish, because a failed check is NOT evidence that the name is "
             f"free and publishing is irreversible. Options: (1) retry when the network is "
             f"available, (2) check "

@@ -4,8 +4,8 @@ Run it:
 
     .venv/bin/python -m tests.live._calibration
 
-It draws synthetic Tableau-shaped window captures — a blank canvas, a canvas with
-only axis furniture, and canvases with a handful of marks — and reports what
+It draws synthetic Tableau-shaped window captures - a blank canvas, a canvas with
+only axis furniture, and canvases with a handful of marks - and reports what
 ``canvas.analyse_png`` measures on each. No Tableau, no GUI, no screenshots: this
 is arithmetic, and it exists so that "0.0005 is the right floor" is a claim
 anyone can re-check instead of a number someone once picked.

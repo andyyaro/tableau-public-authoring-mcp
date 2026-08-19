@@ -1,14 +1,14 @@
 # Map fixture analysis
 
-Source: a map sheet from a **reference workbook** — a real workbook published to
+Source: a map sheet from a **reference workbook** - a real workbook published to
 Tableau Public, downloaded and unpacked. It renders a working map, so its XML is
 the specification for what the `map` template must emit. Nothing here is inferred
 from documentation.
 
 ## 1. Three load-bearing pieces
 
-A map differs from a scatter plot by exactly three things. Each fails *silently* —
-no error dialog, just a wrong-looking sheet — which is why all three are pinned by
+A map differs from a scatter plot by exactly three things. Each fails *silently* -
+no error dialog, just a wrong-looking sheet - which is why all three are pinned by
 `tests/unit/test_maps.py` rather than left to a live screenshot.
 
 | Piece | Missing it produces |
@@ -52,7 +52,7 @@ The `aggregation` attribute is an **override**. The underlying
 default that would otherwise apply.
 
 Note that latitude and longitude take **different** semantic roles. An earlier
-version of `compiler/fields.py` mapped both to `[Country].[Name]` — the role for a
+version of `compiler/fields.py` mapped both to `[Country].[Name]` - the role for a
 country *name* column. Nothing ever called that function, so the error survived
 until maps were implemented.
 
@@ -67,7 +67,7 @@ until maps were implemented.
 ```
 
 **Latitude on rows, longitude on cols.** This is fixed by the projection, not a
-preference — swapping them renders the transpose of the world without complaint.
+preference - swapping them renders the transpose of the world without complaint.
 The compiler therefore assigns the shelves itself and does not accept `rows`/
 `columns` for a map.
 
@@ -94,9 +94,9 @@ symbol map and needs no shape palette, so the `map` template emits that.
 * **Saved viewport.** The fixture pins the visible extent with a `style-rule`
   carrying `projection="EPSG:3857"` and fixed min/max on both axes. Omitting it
   lets Tableau auto-fit to the data, which is the better default for generated
-  workbooks — a pinned viewport computed from someone else's coordinates would
+  workbooks - a pinned viewport computed from someone else's coordinates would
   show the wrong part of the world.
-* **`<format attr="washout" value="0.0" />`** on the `map` style element —
+* **`<format attr="washout" value="0.0" />`** on the `map` style element -
   cosmetic basemap fade.
 * **Filled maps, custom territories, map layers, spatial files, custom geocoding.**
   None appear in this fixture and none are generated.

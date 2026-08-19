@@ -21,7 +21,7 @@ WHY IT LOOKS LIKE THIS (each point cost real debugging time; do not "simplify")
 3. Window discovery therefore uses ``CGWindowListCopyWindowInfo``.
    ``kCGWindowListOptionOnScreenOnly`` is the list of windows that actually exist;
    ``kCGWindowListOptionAll`` additionally returns **destroyed** windows that the
-   window server has not yet reaped. See STALE WINDOWS below — this was originally
+   window server has not yet reaped. See STALE WINDOWS below - this was originally
    documented here as a minimized-window signal, which is wrong and caused two
    separate bugs.
 4. A minimized Tableau document keeps a **Dock tile**, and that tile *is* on
@@ -37,8 +37,8 @@ STALE WINDOWS
 Every workbook Tableau has *ever* opened leaves a husk behind: an entry that
 survives in ``kCGWindowListOptionAll`` after the document is closed, always with
 the exact bounds ``218x161 at (-234, 367)``. Directly observed: with one workbook
-open, the same title appeared twice — once live at ``1291x949 at (221, 33)`` and
-once as a husk — and a screenshot confirmed a single real window, with every other
+open, the same title appeared twice - once live at ``1291x949 at (221, 33)`` and
+once as a husk - and a screenshot confirmed a single real window, with every other
 "open" workbook sitting in Tableau's *recent files* list.
 
 Twenty-six husks accumulated over two test runs, and they broke closing in two
@@ -80,7 +80,7 @@ DOC_TITLE_PREFIX = "Tableau Public - "
 #     Dock *tile* of roughly 140x161..140x190 at the Dock's x (16 here), and is
 #     still reported as on-screen;
 #   * bounds of 218x161 at (-234, 367), absent from the on-screen list, are NOT a
-#     minimized window. That is the husk of a CLOSED one — see STALE WINDOWS
+#     minimized window. That is the husk of a CLOSED one - see STALE WINDOWS
 #     above. This comment previously said the opposite and cost two bugs.
 # No public API exposes "is minimized" for another process's windows, so this is a
 # heuristic, and it is wrong in one known way:
@@ -114,9 +114,9 @@ KEY_CODES = {"w": 13}
 #: Returns raw window records: ``id, title, x, y, width, height, on_screen``,
 #: on-screen windows first in front-to-back order. Injectable for testing.
 Enumerator = Callable[[], list[dict]]
-#: ``(x, y) -> None`` — posts a real HID click. Injectable for testing.
+#: ``(x, y) -> None`` - posts a real HID click. Injectable for testing.
 Clicker = Callable[[float, float], None]
-#: ``(key) -> None`` — posts a real HID Command-<key>. Injectable for testing.
+#: ``(key) -> None`` - posts a real HID Command-<key>. Injectable for testing.
 KeySender = Callable[[str], None]
 Sleeper = Callable[[float], None]
 Activator = Callable[[], None]
@@ -147,8 +147,8 @@ class WindowInfo:
     def is_stale(self) -> bool:
         """True when this is a husk of a window Tableau has already destroyed.
 
-        A live window is always composited — a full-size one directly, a minimized
-        one as its Dock tile — so anything the window server reports as off-screen
+        A live window is always composited - a full-size one directly, a minimized
+        one as its Dock tile - so anything the window server reports as off-screen
         no longer exists. See the STALE WINDOWS note at the top of this module.
         """
         return not self.on_screen
@@ -345,7 +345,7 @@ def find_document(stem: str, *, enumerator: Enumerator | None = None) -> WindowI
     """Locate a document window by workbook stem.
 
     Matching is case-insensitive and treats ``_`` as a space. An exact match always
-    beats a substring match — without that rule ``Full_Feature_Check`` would be
+    beats a substring match - without that rule ``Full_Feature_Check`` would be
     ambiguous with ``Full_Feature_Check_v2``. Among equally good matches the
     largest window wins, because duplicates are usually one restored window plus
     one or more minimized Dock tiles, and the restored one is the useful target.
@@ -416,7 +416,7 @@ def tableau_is_active(*, runner: Callable[[str], str] | None = None) -> bool:
 
     That gap is not theoretical. This server is normally driven from a terminal
     or editor while Tableau sits in the background, and
-    :func:`frontmost_document` only ranks Tableau's *own* windows — it returns a
+    :func:`frontmost_document` only ranks Tableau's *own* windows - it returns a
     confident answer even when Tableau is not the active app at all. Command-W
     aimed at a workbook would then close the front tab of whatever the user was
     actually looking at.
@@ -426,7 +426,7 @@ def tableau_is_active(*, runner: Callable[[str], str] | None = None) -> bool:
 
 
 def open_with_tableau(path: Path) -> None:
-    """``open -a <Tableau> <file>`` — never shell=True, arguments always a list."""
+    """``open -a <Tableau> <file>`` - never shell=True, arguments always a list."""
     app = find_app()
     if not app:
         raise DesktopError("Tableau Public is not installed")
@@ -445,7 +445,7 @@ def click_point(window: WindowInfo) -> tuple[int, int] | None:
     """Where to click to raise ``window``, computed from its LIVE bounds.
 
     Never a hardcoded screen position (MASTERPROMPT §4). Returns ``None`` when the
-    window offers nothing clickable — off-screen, or degenerate bounds.
+    window offers nothing clickable - off-screen, or degenerate bounds.
     """
     if window.width < UNUSABLE_EDGE or window.height < UNUSABLE_EDGE:
         return None
@@ -486,13 +486,13 @@ def unminimize_and_raise(
        loading a second copy.
 
     THE ORDER MATTERS, AND IT IS THE OPPOSITE OF WHAT IT LOOKS LIKE. ``open -a``
-    raises the window more reliably, so it was tried first — but the window it
+    raises the window more reliably, so it was tried first - but the window it
     raises is not necessarily the document Tableau considers *active*. The window
     server reports the target as frontmost while Tableau's own active-document
     state still points elsewhere, so a Command-W that passes every guard here
     closes a different workbook. Reproduced deliberately: with ``CloseTestA``
     minimized behind ``CloseTestB``, closing A via ``open -a`` failed twice over
-    21s while consuming two blank ``Book`` windows — Command-W was closing those.
+    21s while consuming two blank ``Book`` windows - Command-W was closing those.
     The same close via the Dock-tile click succeeded first time. Clicking the tile
     activates the document inside Tableau; re-opening the file only rearranges
     windows.
@@ -565,7 +565,7 @@ def looks_like_save_prompt(window: WindowInfo) -> bool:
 def detect_save_prompt(*, enumerator: Enumerator | None = None) -> WindowInfo | None:
     """A visible window that looks like a "save changes?" question, if any.
 
-    Husks are skipped. Dialogs leave them behind exactly as documents do — the
+    Husks are skipped. Dialogs leave them behind exactly as documents do - the
     sign-in window leaves a ~59x112 one, which is what once made publishing
     believe sign-in was permanently required. A stale save prompt would be worse
     here: it would block EVERY close from then on with "Tableau is already
@@ -621,7 +621,7 @@ def close_document(
       "Save" can overwrite a file the user did not intend to modify, and this code
       cannot tell which workbook's unsaved state is precious. Guessing wrong is
       unacceptable, so it does not guess. ``save=True`` is therefore rejected
-      outright rather than silently ignored — saving on the user's behalf is out
+      outright rather than silently ignored - saving on the user's behalf is out
       of scope for this module.
     * **Never claims success it cannot prove.** Success requires the target window
       to be absent from a fresh enumeration afterwards.
@@ -646,7 +646,7 @@ def close_document(
             return False, (
                 f"refusing to close: no window is titled exactly "
                 f"{DOC_TITLE_PREFIX}{stem!r}. Closest open windows are {near}. Pass the exact "
-                f"stem — a partial match could close the wrong workbook."
+                f"stem - a partial match could close the wrong workbook."
             )
         stale = [
             d
@@ -695,7 +695,7 @@ def close_document(
 
     # Command-W goes to the ACTIVE APPLICATION, not to a window we name. Every
     # check above only ranks Tableau's own windows, so all of them pass happily
-    # while the user is in a browser — and the keystroke closes their tab.
+    # while the user is in a browser - and the keystroke closes their tab.
     is_active = app_checker or tableau_is_active
     if not is_active():
         (activator or activate_app)()
@@ -727,7 +727,7 @@ def close_document(
         if prompt is not None:
             return False, (
                 f"BAILED OUT: Tableau is asking {prompt.title!r} about {target.workbook_stem!r}. "
-                f"This server will not answer a save prompt — 'Don't Save' would destroy unsaved "
+                f"This server will not answer a save prompt - 'Don't Save' would destroy unsaved "
                 f"work. The prompt is still on screen; answer it in Tableau."
             )
         # Only live windows count. The husk this close just created carries the same
@@ -800,7 +800,7 @@ def close_all_generated(
 
     Intended for test debris (``Probe``, ``Full_Feature_Check``, ``NoFilter_Probe``).
     A window is a candidate **only** if its normalised stem starts with a
-    normalised prefix — never on a substring or fuzzy match — so a workbook the
+    normalised prefix - never on a substring or fuzzy match - so a workbook the
     caller did not name can never be selected.
 
     ``dry_run`` defaults to True and reports what *would* be closed without
@@ -813,7 +813,7 @@ def close_all_generated(
     minimised off-screen cannot be closed at all: raising a window works by
     clicking its on-screen tile, and a minimised document offers none, so the only
     reliable way back is ``open -a`` on the original path. Every such workbook is
-    otherwise reported in ``failed`` and left open, which degrades the app — Tableau
+    otherwise reported in ``failed`` and left open, which degrades the app - Tableau
     stops accepting new documents after roughly eighteen of them.
     """
     cleaned = [p for p in prefixes if p and p.strip()]

@@ -101,7 +101,7 @@ def server_menu_items() -> list[str]:
 
 # A real sign-in window measured 500x648. Tableau leaves a shrunken ~59x112 husk
 # of it in the window server after it closes, which is why size and on-screen
-# presence are both required — matching on title alone reported "sign-in needed"
+# presence are both required - matching on title alone reported "sign-in needed"
 # forever after the first authentication.
 MIN_SIGN_IN_AREA = 40_000
 
@@ -244,13 +244,13 @@ def assert_target_frontmost(expected: str) -> tuple[bool, str]:
     """Refuse to act unless the intended workbook is the active document.
 
     Without this guard a menu click is dispatched to whatever window happens to
-    be frontmost — which could be one of the user's own workbooks. Publishing is
+    be frontmost - which could be one of the user's own workbooks. Publishing is
     irreversible, so this is a hard precondition, not a warning.
 
     The match is **exact** on the normalised stem, never a substring. A substring
     test passes when the frontmost window merely *contains* the requested name,
     so asking to publish ``Q3_Sales`` while ``Q3_Sales_Draft`` is in front would
-    push the draft to the public internet under the intended name — and report
+    push the draft to the public internet under the intended name - and report
     success. ``window_control.close_document`` already requires an exact match for
     exactly this reason, and closing a workbook is the *recoverable* operation of
     the two.
@@ -275,7 +275,7 @@ def _focus_workbook(window_title_contains: str, *, file_path: Path | None = None
     Earlier this clicked a Window-menu item matching the title. That was actively
     harmful: Tableau's **Window menu lists worksheets, not documents**, so the
     match never succeeded, and merely opening the menu changed which document was
-    frontmost — causing the publish precondition to abort against the wrong
+    frontmost - causing the publish precondition to abort against the wrong
     workbook. It now delegates to the window-control module, which uses window
     server bounds and CGEvent, and is a no-op when the target is already active.
     """
@@ -330,7 +330,7 @@ def open_menu_and_locate(target: str) -> tuple[int, int] | None:
 
     This ordering is essential and was arrived at empirically:
 
-    * ``click menu bar item`` via Accessibility DOES open the menu — menu *bar
+    * ``click menu bar item`` via Accessibility DOES open the menu - menu *bar
       items* respond to AX even though menu *items* do not.
     * The item's ``position``/``size`` are only reported correctly **while that
       same script holds the menu open**. Opening the menu with a CGEvent click and
@@ -485,7 +485,7 @@ def onscreen_windows() -> list[dict]:
     """Tableau windows that are genuinely on screen right now.
 
     MUST NOT use ``kCGWindowListOptionAll``: the window server keeps entries for
-    destroyed windows, and matching against those produced two separate bugs — a
+    destroyed windows, and matching against those produced two separate bugs - a
     permanent false "sign-in required", and clicks aimed at a save dialog that had
     already been replaced.
     """
@@ -596,7 +596,7 @@ def cancel_save_dialog(*, timeout: float = 8.0) -> bool:
     Escape is used rather than clicking Cancel: the Cancel button click was observed
     to leave the dialog on screen (it repaints blank mid-transition and lingers),
     whereas Escape closes it deterministically. The Save button click, by contrast,
-    is verified working — see SAVE_BUTTON_FRACTION.
+    is verified working - see SAVE_BUTTON_FRACTION.
     """
     try:
         osascript(
