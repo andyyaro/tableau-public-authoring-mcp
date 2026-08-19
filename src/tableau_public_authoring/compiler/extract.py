@@ -31,7 +31,8 @@ def _hyper_log_dir() -> Path:
     is wherever the client happened to launch it: this repository accumulated a
     48 MB ``hyperd.log`` in its root that way. The log also records absolute
     paths of every database it touches, so it is exactly the machine-identifying
-    material T6 exists to keep out of things the user might hand to someone else which is an argument against dropping it in the user's output directory
+    material T6 exists to keep out of things the user might hand to someone else which is an
+    argument against dropping it in the user's output directory
     too.
 
     A fixed directory under the OS temp dir keeps it off the repo, off the
