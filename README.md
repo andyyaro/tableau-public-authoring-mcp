@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/brand/lockup/lockup-color.svg" alt="tableau-public-authoring-mcp" width="406">
+</p>
+
 # Tableau Public Authoring MCP
 
 An MCP server that **authors** Tableau workbooks from a declarative spec, **validates**
