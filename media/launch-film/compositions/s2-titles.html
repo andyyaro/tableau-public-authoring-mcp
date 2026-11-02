@@ -1,0 +1,49 @@
+<template>
+  <!-- The board's top band (screen space, never under the camera): one section title per beat, "Bold title" + a small
+       grey subtitle at the top left (CERFODES), then the overview's header and its legend. Same window as s2-board. -->
+  <style>
+    #t-root { position: absolute; inset: 0; }
+    .b-title { position: absolute; left: 56px; top: 32px; display: flex; align-items: baseline; gap: 16px; white-space: nowrap; }
+    .b-title b { font-size: 34px; line-height: 40px; font-weight: 700; color: var(--label-primary); }
+    .b-title span { font-size: 24px; line-height: 30px; color: var(--label-secondary); }
+    #b-legend { position: absolute; right: 56px; top: 38px; display: flex; gap: 28px; }
+    .b-lg { display: flex; align-items: center; gap: 9px; font-size: 22px; line-height: 28px; color: var(--label-primary); white-space: nowrap; }
+    .b-dot { display: block; flex: none; width: 11px; height: 11px; border-radius: 50%; }
+  </style>
+  <div id="t-root" data-composition-id="s2-titles" data-width="1920" data-height="1080">
+    <div class="b-title" id="t1"><b>Describe</b><span>a workbook spec in JSON, checked against the data</span></div>
+    <div class="b-title" id="t2"><b>Build</b><span>a .twb, a Hyper extract, one .twbx</span></div>
+    <div class="b-title" id="t3"><b>Open it in Tableau Public</b><span>loaded into the app itself, then photographed</span></div>
+    <div class="b-title" id="t4"><b>Real output</b><span>generated from a spec · untouched in Tableau Public 2026.2.0 · synthetic 12-row data</span></div>
+    <div class="b-title" id="t5"><b>Publish</b><span>Tableau's own save flow, behind guards</span></div>
+    <div class="b-title" id="t6"><b>How Tableau Public Authoring MCP works</b></div>
+    <div id="b-legend">
+      <div class="b-lg"><i class="b-dot" style="background:var(--system-green)"></i>runs without Tableau</div>
+      <div class="b-lg"><i class="b-dot" style="background:var(--system-indigo)"></i>needs Tableau Public on this Mac</div>
+      <div class="b-lg"><i class="b-dot" style="background:var(--system-orange)"></i>public and irreversible</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const TM = window.TM, VO = window.VO, S0 = TM.s2[0];
+      const W = KIT.W(S0), F = (t) => t - S0, END = (k) => F(VO[k].end);
+      const tl = gsap.timeline({ paused: true });
+      const m = KIT.moves(tl);
+      gsap.set(["#t1", "#t2", "#t3", "#t4", "#t5", "#t6", "#b-legend"], { opacity: 0 });
+      // each title arrives with its beat and leaves just before the next camera move
+      const BEATS = [
+        ["#t1", 0.35, F(TM.s3[0]) - 0.25],
+        ["#t2", F(TM.s3[0]) + 0.15, F(TM.s4[0]) + 0.1],
+        ["#t3", F(TM.s4[0]) + 0.6, END("v08") + 0.2],
+        ["#t4", W("v09", "every"), F(TM.s5[0]) - 0.15],
+        ["#t5", F(TM.s5[0]) + 0.25, F(TM.s6[0]) - 0.15],
+      ];
+      for (const [sel, a, b] of BEATS) { m.titleIn(sel, a); m.out(sel, b); }
+      m.titleIn("#t6", F(TM.s6[0]) + 0.6);
+      tl.fromTo("#b-legend", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, F(TM.s6[0]) + 0.75);
+      // the board gives way to the end card (s7 starts at TM.end_card)
+      m.out("#t-root", F(TM.end_card), 0.55);
+      window.__timelines["s2-titles"] = tl;
+    })();
+  </script>
+</template>

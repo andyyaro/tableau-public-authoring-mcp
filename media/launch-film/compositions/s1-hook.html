@@ -1,0 +1,107 @@
+<template>
+  <!-- s1: the hook and the title. Two gaps (README "Two constraints", ADR findings 1 and 2), then on the drop (8.0 s,
+       the "T" of "Tableau" in v03) the app icon builds (assets/brand/icon-rounded.svg, inlined unchanged so its parts can
+       move), the name in the system face (the brand lockup's wordmark face is fixed-width: not used). -->
+  <style>
+    #h-root { position: absolute; inset: 0; }
+    #h-head { position: absolute; left: 96px; top: 52px; display: flex; align-items: baseline; gap: 18px; white-space: nowrap; }
+    #h-head b { font-size: 46px; line-height: 54px; font-weight: 700; color: var(--label-primary); }
+    #h-head span { font-size: 28px; line-height: 34px; color: var(--label-secondary); }
+    .h-card { position: absolute; top: 352px; width: 610px; height: 232px; padding: 30px 34px; border-radius: 26px;
+              background: var(--background-primary); display: flex; gap: 24px; align-items: center; }
+    #h-c1 { left: 330px; }
+    #h-c2 { left: 980px; }
+    .h-tile { flex: none; width: 68px; height: 68px; border-radius: 16px; background: var(--system-gray); color: #fff;
+              display: flex; align-items: center; justify-content: center; font-size: 40px; }
+    .h-tx { min-width: 0; display: flex; flex-direction: column; }
+    .h-t { font-size: 40px; line-height: 48px; font-weight: 600; color: var(--label-primary); white-space: nowrap; }
+    .h-s { margin-top: 6px; font-size: 27px; line-height: 34px; color: var(--label-secondary); text-wrap: balance; }
+    .h-st { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 28px; line-height: 34px; font-weight: 500; color: var(--label-primary); }
+    .h-dot { display: block; flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--system-gray); }
+
+    #h-stack { position: absolute; left: 0; right: 0; top: 150px; display: flex; flex-direction: column; align-items: center; }
+    #h-icon { display: block; width: 220px; height: 220px; overflow: visible; }
+    #h-icon .bar { transform-box: fill-box; transform-origin: 50% 100%; }
+    #h-word { margin-top: 40px; font-size: 88px; line-height: 100px; font-weight: 700; letter-spacing: -0.5px; color: var(--label-primary); white-space: nowrap; }
+    #h-chip { margin-top: 34px; display: flex; align-items: center; gap: 12px; padding: 12px 28px; border-radius: var(--radius-capsule);
+              background: var(--fill-tertiary); font-size: 30px; line-height: 36px; font-weight: 500; color: var(--label-primary); white-space: nowrap; }
+  </style>
+  <div id="h-root" data-composition-id="s1-hook" data-width="1920" data-height="1080">
+    <div id="h-head"><b>Tableau Public</b><span>two constraints</span></div>
+    <div id="h-c1" class="h-card">
+      <div class="h-tile"><svg class="ic"><use href="#ic-globe" /></svg></div>
+      <div class="h-tx">
+        <div class="h-t">Publishing API</div>
+        <div class="h-s">the REST API covers Server and Cloud only</div>
+        <div class="h-st" id="h-c1-st"><i class="h-dot"></i><span>none</span></div>
+      </div>
+    </div>
+    <div id="h-c2" class="h-card">
+      <div class="h-tile"><svg class="ic"><use href="#ic-doc" /></svg></div>
+      <div class="h-tx">
+        <div class="h-t">Build from scratch</div>
+        <div class="h-s">the Document API can't create files from scratch</div>
+        <div class="h-st" id="h-c2-st"><i class="h-dot"></i><span>not supported</span></div>
+      </div>
+    </div>
+
+    <div id="h-stack">
+      <svg id="h-icon" viewBox="0 0 120 120" aria-label="tableau-public-authoring-mcp icon">
+        <rect id="h-ground" width="120" height="120" rx="26.4" fill="#2A0E33" />
+        <g transform="translate(60 60) scale(0.68) translate(-60 -60)">
+          <path id="h-br1" pathLength="1" d="M40 18 C 28 18, 28 26, 28 36 L 28 48 C 28 55, 24 60, 16 60 C 24 60, 28 65, 28 72 L 28 84 C 28 94, 28 102, 40 102" fill="none" stroke="#FF4FA3" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+          <path id="h-br2" pathLength="1" d="M80 18 C 92 18, 92 26, 92 36 L 92 48 C 92 55, 96 60, 104 60 C 96 60, 92 65, 92 72 L 92 84 C 92 94, 92 102, 80 102" fill="none" stroke="#FF4FA3" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+          <rect class="bar" id="h-b1" x="41.5" y="70" width="9" height="26" rx="3" fill="#FFD9C2" />
+          <rect class="bar" id="h-b2" x="55.5" y="52" width="9" height="44" rx="3" fill="#FFD9C2" />
+          <rect class="bar" id="h-b3" x="69.5" y="36" width="9" height="60" rx="3" fill="#FFD9C2" />
+        </g>
+      </svg>
+      <div id="h-word">Tableau Public Authoring MCP</div>
+      <div id="h-chip">MCP server · MIT · macOS</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const TM = window.TM, VO = window.VO;
+      const S0 = TM.s1[0], S1 = TM.s1[1];
+      const W = KIT.W(S0); // the voice's own word times (window.VO), in this scene's local seconds
+      const F = (t) => t - S0;
+      const tl = gsap.timeline({ paused: true });
+      // placeholder: the empty card arrives faint, its content lights up on the word that names it (CERFODES)
+      const ph = (sel, at) => tl.fromTo(sel, { opacity: 0, scale: 0.97 }, { opacity: 0.5, scale: 1, duration: 0.45, ease: "power2.out" }, at);
+      const light = (sel, at) => {
+        tl.to(sel, { opacity: 1, duration: 0.3, ease: "power1.out" }, at);
+        tl.fromTo(`${sel} > *`, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, at);
+        tl.to(sel, { scale: 1.035, duration: 0.2, ease: "power2.out" }, at);
+        tl.to(sel, { scale: 1, duration: 0.35, ease: "power2.inOut" }, at + 0.2);
+      };
+      const dot = (sel, at) => tl.fromTo(sel, { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.45, ease: "power2.out" }, at);
+
+      gsap.set(["#h-c1 > *", "#h-c2 > *", "#h-c1-st", "#h-c2-st", "#h-c1", "#h-c2", "#h-head"], { opacity: 0 });
+      gsap.set(["#h-ground", "#h-word", "#h-chip"], { opacity: 0 });
+      gsap.set(["#h-br1", "#h-br2"], { strokeDasharray: 1, strokeDashoffset: 1 });
+      gsap.set(".bar", { scaleY: 0 });
+      gsap.set(["#h-br1", "#h-br2"], { opacity: 0 }); // a zero-length round-capped stroke still draws a dot
+
+      tl.fromTo("#h-head", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.15);
+      ph("#h-c1", 0.3);
+      ph("#h-c2", 0.42);
+      light("#h-c1", W("v01", "publishing") - 0.05);
+      dot("#h-c1-st", W("v01", "api") + 0.05);
+      light("#h-c2", W("v02", "library") - 0.05);
+      dot("#h-c2-st", W("v02", "scratch") - 0.05);
+
+      // the drop: the two gaps step away, the icon builds (ground, the two braces draw, the three bars rise)
+      const D = F(TM.drop);
+      tl.to(["#h-c1", "#h-c2", "#h-head"], { opacity: 0, y: -10, duration: 0.35, ease: "power1.in" }, D - 0.4);
+      tl.fromTo("#h-ground", { opacity: 0, scale: 0.86, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.7, ease: "back.out(1.4)" }, D);
+      tl.set(["#h-br1", "#h-br2"], { opacity: 1 }, D + 0.18);
+      tl.to(["#h-br1", "#h-br2"], { strokeDashoffset: 0, duration: 0.6, ease: "power2.inOut" }, D + 0.18);
+      ["#h-b1", "#h-b2", "#h-b3"].forEach((b, i) => tl.to(b, { scaleY: 1, duration: 0.45, ease: "back.out(1.6)" }, D + 0.42 + i * 0.12));
+      tl.fromTo("#h-word", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, W("v03", "public") + 0.05);
+      tl.fromTo("#h-chip", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, W("v03", "publishes"));
+      tl.to("#h-stack", { opacity: 0, duration: 0.35, ease: "power1.in" }, S1 - S0 - 0.4);
+      window.__timelines["s1-hook"] = tl;
+    })();
+  </script>
+</template>

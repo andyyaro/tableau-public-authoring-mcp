@@ -1,0 +1,16 @@
+{
+  "v01": "Tableau Public has no publishing API.",
+  "v02": "And no official library can build workbooks from scratch.",
+  "v03": "Tableau Public Authoring MCP builds and publishes them anyway.",
+  "v04": "Describe a workbook in JSON.",
+  "v05": "A dry run checks every field against the data, so a typo fails with the right names.",
+  "v06": "The compiler writes the workbook, and turns each CSV into the Hyper extract Tableau Public requires.",
+  "v07": "Then it opens the file in the real Tableau Public app, and photographs it.",
+  "v08": "Five of Tableau's load rules only showed up that way.",
+  "v09": "Every screenshot here is a generated workbook, untouched in Tableau.",
+  "v10": "Publishing drives Tableau's own save flow, in your signed-in session.",
+  "v11": "It never reads credentials, and won't replace a live workbook unless told to.",
+  "v12": "507 tests pass without Tableau. 15 more drive the real app.",
+  "v13": "Tableau Public Authoring MCP.",
+  "v14": "Declarative specs, compiled into Tableau workbooks."
+}

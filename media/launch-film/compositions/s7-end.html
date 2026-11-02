@@ -1,0 +1,60 @@
+<template>
+  <!-- s7: the end card, on the track's own outro (58.667 s). The app icon (assets/brand/icon-rounded.svg, inlined unchanged)
+       builds again, the name lands on v13, the two lines on v14 (the brand sheet's tagline, verbatim, and the repo).
+       v13 and v14 are "onscreen" lines: build.py gives them no caption pill. -->
+  <style>
+    #e-root { position: absolute; inset: 0; }
+    #e-stack { position: absolute; left: 0; right: 0; top: 146px; display: flex; flex-direction: column; align-items: center; }
+    #e-icon { display: block; width: 200px; height: 200px; overflow: visible; }
+    #e-icon .bar { transform-box: fill-box; transform-origin: 50% 100%; }
+    #e-word { margin-top: 36px; font-size: 88px; line-height: 100px; font-weight: 700; letter-spacing: -0.5px; color: var(--label-primary); white-space: nowrap; }
+    #e-lines { margin-top: 44px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .e-l { display: flex; align-items: center; gap: 16px; font-size: 44px; line-height: 54px; font-weight: 600; color: var(--label-primary); white-space: nowrap; }
+    .e-l .ic { font-size: 42px; color: var(--label-secondary); }
+    #e-l2 { font-weight: 500; color: var(--label-secondary); }
+  </style>
+  <div id="e-root" data-composition-id="s7-end" data-width="1920" data-height="1080">
+    <div id="e-stack">
+      <svg id="e-icon" viewBox="0 0 120 120" aria-label="tableau-public-authoring-mcp icon">
+        <rect id="e-ground" width="120" height="120" rx="26.4" fill="#2A0E33" />
+        <g transform="translate(60 60) scale(0.68) translate(-60 -60)">
+          <path id="e-br1" pathLength="1" d="M40 18 C 28 18, 28 26, 28 36 L 28 48 C 28 55, 24 60, 16 60 C 24 60, 28 65, 28 72 L 28 84 C 28 94, 28 102, 40 102" fill="none" stroke="#FF4FA3" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+          <path id="e-br2" pathLength="1" d="M80 18 C 92 18, 92 26, 92 36 L 92 48 C 92 55, 96 60, 104 60 C 96 60, 92 65, 92 72 L 92 84 C 92 94, 92 102, 80 102" fill="none" stroke="#FF4FA3" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+          <rect class="bar" id="e-b1" x="41.5" y="70" width="9" height="26" rx="3" fill="#FFD9C2" />
+          <rect class="bar" id="e-b2" x="55.5" y="52" width="9" height="44" rx="3" fill="#FFD9C2" />
+          <rect class="bar" id="e-b3" x="69.5" y="36" width="9" height="60" rx="3" fill="#FFD9C2" />
+        </g>
+      </svg>
+      <div id="e-word">Tableau Public Authoring MCP</div>
+      <div id="e-lines">
+        <div class="e-l" id="e-l1"><svg class="ic"><use href="#ic-doc" /></svg><span>Declarative specs, compiled into Tableau workbooks.</span></div>
+        <div class="e-l" id="e-l2"><svg class="ic"><use href="#ic-globe" /></svg><span>github.com/andyyaro/tableau-public-authoring-mcp</span></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const TM = window.TM, VO = window.VO;
+      const S0 = TM.s7[0], S1 = TM.s7[1];
+      const W = KIT.W(S0); // the voice's own word times (window.VO), in this scene's local seconds
+      const tl = gsap.timeline({ paused: true });
+      gsap.set(["#e-ground", "#e-word", "#e-l1", "#e-l2"], { opacity: 0 });
+      gsap.set(["#e-br1", "#e-br2"], { strokeDasharray: 1, strokeDashoffset: 1 });
+      gsap.set(".bar", { scaleY: 0 });
+      gsap.set(["#e-br1", "#e-br2"], { opacity: 0 }); // a zero-length round-capped stroke still draws a dot
+
+      // the board fades out above it over the first ~0.6 s; the icon builds as it clears
+      const A = 0.4;
+      tl.fromTo("#e-ground", { opacity: 0, scale: 0.88, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.8, ease: "back.out(1.4)" }, A);
+      tl.set(["#e-br1", "#e-br2"], { opacity: 1 }, A + 0.2);
+      tl.to(["#e-br1", "#e-br2"], { strokeDashoffset: 0, duration: 0.6, ease: "power2.inOut" }, A + 0.2);
+      ["#e-b1", "#e-b2", "#e-b3"].forEach((b, i) => tl.to(b, { scaleY: 1, duration: 0.45, ease: "back.out(1.6)" }, A + 0.45 + i * 0.12));
+      tl.fromTo("#e-word", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, W("v13", "tableau") - 0.05);
+      tl.fromTo("#e-l1", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.55, ease: "power2.out" }, W("v14", "declarative") - 0.05);
+      tl.fromTo("#e-l2", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.55, ease: "power2.out" }, W("v14", "compiled"));
+      // the end card fades to the background with the music's own fade (65.0-67.5)
+      tl.to("#e-stack", { opacity: 0, duration: 1.2, ease: "power1.inOut" }, S1 - S0 - 1.35);
+      window.__timelines["s7-end"] = tl;
+    })();
+  </script>
+</template>

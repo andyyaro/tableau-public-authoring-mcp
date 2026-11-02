@@ -1,0 +1,151 @@
+{
+ "_how": "Real responses from the server's own call_tool() at repo d77186f, run offline in a scratch venv with osascript/open/screencapture shimmed to fail (no GUI touched; Tableau Public is not installed on this machine). Paths scrubbed to <data>/<output>. Spec = the README's map worksheet wrapped in a minimal workbook spec over tests/fixtures/data/ev_site_readiness.csv.",
+ "spec": {
+  "spec_version": "0.1",
+  "workbook": {
+   "name": "Demo Map",
+   "description": "film probe"
+  },
+  "data_sources": [
+   {
+    "id": "sites",
+    "type": "csv",
+    "path": "<data>/sites.csv"
+   }
+  ],
+  "worksheets": [
+   {
+    "name": "Site Map",
+    "template": "map",
+    "data_source": "sites",
+    "detail": [
+     "Site Name"
+    ],
+    "color": "Status",
+    "size": {
+     "field": "Annual Sessions",
+     "aggregation": "Sum"
+    },
+    "title": "Candidate sites"
+   }
+  ],
+  "output": {
+   "directory": "<output>",
+   "package_twbx": true
+  }
+ },
+ "validate_ok": {
+  "ok": true,
+  "valid": true,
+  "workbook_name": "Demo Map",
+  "data_sources": [
+   {
+    "id": "sites",
+    "csv": "<data>/sites.csv",
+    "fields": 11
+   }
+  ],
+  "worksheets": [
+   {
+    "name": "Site Map",
+    "template": "map"
+   }
+  ],
+  "output_directory": "<output>",
+  "note": "dry run - no files were written"
+ },
+ "validate_typo_Stauts": {
+  "ok": false,
+  "error": "specification error: worksheets[0].color: field 'Stauts' does not exist in data source 'sites'. Available: ['Annual Sessions', 'Assessment Date', 'Charger Count', 'City', 'Estimated Cost', 'Latitude', 'Longitude', 'Readiness Score', 'Site Name', 'State', 'Status']"
+ },
+ "build_workbook_1": {
+  "ok": true,
+  "build": {
+   "workbook_name": "Demo Map",
+   "twb_path": "<output>/Demo_Map.twb",
+   "twbx_path": "<output>/Demo_Map.twbx",
+   "twbx_sha256": "14f9285666fe21e1cc7e9d0b43180dfb4e54f7be7d100d0a35c65006641206c7",
+   "data_dir": "<output>/Data",
+   "worksheets": [
+    "Site Map"
+   ],
+   "package_entries": [
+    "Demo_Map.twb",
+    "Data/sites/sites.hyper",
+    "Data/sites/sites.csv"
+   ],
+   "manifest_path": "<output>/Demo_Map.manifest.json",
+   "warnings": []
+  }
+ },
+ "determinism": {
+  "twb_sha256_build1": "1c646bbc6382ba062f6bea6019a4961a8ed77f30a280ae59aef14a428029b6d3",
+  "twb_sha256_build2": "1c646bbc6382ba062f6bea6019a4961a8ed77f30a280ae59aef14a428029b6d3",
+  "twb_identical": true,
+  "twbx_sha256_build1": "14f9285666fe21e1cc7e9d0b43180dfb4e54f7be7d100d0a35c65006641206c7",
+  "twbx_sha256_build2": "259a05e9310e4dd0f619af14b6fb41a01decf0c5c0dcb0e88ad0849ae739405b",
+  "twbx_identical": false,
+  "twb_bytes": 21327
+ },
+ "twb_geographical_lines": [
+  "<column datatype=\"real\" name=\"[Latitude]\" role=\"measure\" type=\"quantitative\" semantic-role=\"[Geographical].[Latitude]\" aggregation=\"Avg\" />",
+  "<column datatype=\"real\" name=\"[Longitude]\" role=\"measure\" type=\"quantitative\" semantic-role=\"[Geographical].[Longitude]\" aggregation=\"Avg\" />"
+ ],
+ "list_workbook_templates": {
+  "ok": true,
+  "templates": [
+   {
+    "name": "bar",
+    "mark_class": "Bar",
+    "requires": "rows + columns; the measure normally goes on columns"
+   },
+   {
+    "name": "line",
+    "mark_class": "Line",
+    "requires": "rows + columns; a date or continuous field on columns"
+   },
+   {
+    "name": "text_table",
+    "mark_class": "Text",
+    "requires": "rows; a measure on columns or label"
+   },
+   {
+    "name": "heatmap",
+    "mark_class": "Square",
+    "requires": "rows + columns + a measure on color"
+   },
+   {
+    "name": "scatter",
+    "mark_class": "Circle",
+    "requires": "aggregated measures on BOTH rows and columns"
+   },
+   {
+    "name": "circle",
+    "mark_class": "Circle",
+    "requires": "rows + columns"
+   },
+   {
+    "name": "map",
+    "mark_class": "Circle",
+    "requires": "latitude + longitude (inferred from column names when omitted), plus at least one dimension on detail/color/label so each location gets its own mark"
+   }
+  ]
+ },
+ "publish_without_confirm": {
+  "ok": false,
+  "error": "refusing to publish: confirm_publish must be true. Publication to Tableau Public is irreversible and world-visible."
+ },
+ "publish_without_profile": {
+  "ok": false,
+  "error": "refusing to publish: 'profile' is required. Without it the server cannot check whether a workbook of this name is already published, and publishing would silently replace it. Pass your Tableau Public profile name."
+ },
+ "get_authoring_capabilities_keys": [
+  "notes",
+  "ok",
+  "server",
+  "spec_version",
+  "supported",
+  "tableau_public",
+  "unsupported"
+ ]
+}

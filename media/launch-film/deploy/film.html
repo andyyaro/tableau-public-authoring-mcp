@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau Public Authoring MCP launch film</title>
+<meta name="description" content="68 seconds on Tableau Public Authoring MCP: an MCP server that builds Tableau workbooks from a JSON spec, checks them in the real Tableau Public app and publishes through Tableau's own save flow.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="Tableau Public Authoring MCP launch film">
+<meta property="og:description" content="Declarative specs, compiled into Tableau workbooks.">
+<meta property="og:image" content="https://andyyaro.github.io/tableau-public-authoring-mcp/film/poster.jpg">
+<meta property="og:type" content="video.other">
+<link rel="icon" href="film/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #2a0e33; --card: #371742; --ink: #fff0f6; --ink2: rgba(255, 240, 246, 0.74); --hair: rgba(255, 240, 246, 0.14); --pink: #ff4fa3; --pink-press: #ff74b6; --peach: #ffd9c2; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); -webkit-text-size-adjust: 100%; }
+  body { margin: 0; font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  a { color: var(--pink); }
+  a:focus-visible, video:focus-visible, summary:focus-visible { outline: 3px solid var(--peach); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+  header a.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  header img { display: block; height: 34px; width: 34px; }
+  header a.back { font-size: 15px; text-decoration: none; }
+  h1 { font-size: clamp(28px, 4.4vw, 44px); line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 10px; font-weight: 700; }
+  .lede { color: var(--ink2); font-size: clamp(17px, 2vw, 20px); margin: 0 0 24px; max-width: 760px; }
+  .player { border-radius: 18px; overflow: hidden; background: #000; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--hair); }
+  video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 8px; }
+  .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border-radius: 22px; font-weight: 600; font-size: 17px; text-decoration: none; }
+  .btn.primary { background: var(--pink); color: var(--bg); }
+  .btn.primary:hover { background: var(--pink-press); }
+  .btn.secondary { background: rgba(255, 240, 246, 0.12); color: var(--ink); }
+  .meta { color: var(--ink2); font-size: 15px; margin: 8px 0 0; }
+  details { margin-top: 32px; background: var(--card); border-radius: 14px; padding: 4px 20px; border: 1px solid var(--hair); }
+  summary { cursor: pointer; font-weight: 600; padding: 14px 0; min-height: 44px; }
+  details p { margin: 0 0 12px; }
+  .credits { margin-top: 32px; color: var(--ink2); font-size: 14px; line-height: 1.6; border-top: 1px solid var(--hair); padding-top: 20px; }
+  .credits p { margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="https://github.com/andyyaro/tableau-public-authoring-mcp" aria-label="Tableau Public Authoring MCP on GitHub"><img src="film/logo.svg" alt="" width="34" height="34"><span>Tableau Public Authoring MCP</span></a>
+    <a class="back" href="https://github.com/andyyaro/tableau-public-authoring-mcp">On GitHub</a>
+  </header>
+  <main>
+    <h1>Tableau Public Authoring MCP, in 68 seconds</h1>
+    <p class="lede">An MCP server that builds Tableau workbooks from a JSON spec, opens them in the real Tableau Public app to check them, and publishes through Tableau's own save flow. One architecture board, with the server's real replies and the repository's real screenshots.</p>
+    <div class="player">
+      <video controls playsinline preload="metadata" poster="film/poster.jpg" width="1920" height="1080" aria-label="Tableau Public Authoring MCP launch film, 68 seconds, with narration">
+        <source src="film/tableau-mcp-launch.mp4" type="video/mp4">
+        Your browser cannot play this video. <a href="film/tableau-mcp-launch.mp4">Download the MP4</a>.
+      </video>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/andyyaro/tableau-public-authoring-mcp#install">Install it</a>
+      <a class="btn secondary" href="https://github.com/andyyaro/tableau-public-authoring-mcp#what-it-produces">What it produces</a>
+    </div>
+    <p class="meta">68 seconds, 1920 × 1080, captions in the picture. <a href="film/tableau-mcp-launch.mp4" download>Download the MP4 (13.8 MB)</a> · <a href="film/tableau-mcp-launch.vtt" download>Captions file (WebVTT)</a></p>
+
+    <details>
+      <summary>Transcript</summary>
+      <p>Tableau Public has no publishing API. And no official library can build workbooks from scratch. Tableau Public Authoring MCP builds and publishes them anyway.</p>
+      <p>Describe a workbook in JSON. A dry run checks every field against the data, so a typo fails with the right names.</p>
+      <p>The compiler writes the workbook, and turns each CSV into the Hyper extract Tableau Public requires.</p>
+      <p>Then it opens the file in the real Tableau Public app, and photographs it. Five of Tableau's load rules only showed up that way. Every screenshot here is a generated workbook, untouched in Tableau.</p>
+      <p>Publishing drives Tableau's own save flow, in your signed-in session. It never reads credentials, and won't replace a live workbook unless told to.</p>
+      <p>507 tests pass without Tableau. 15 more drive the real app.</p>
+      <p>Tableau Public Authoring MCP. Declarative specs, compiled into Tableau workbooks.</p>
+    </details>
+
+    <div class="credits">
+      <p>The board is drawn in HTML. Its error text, package entries and publish refusal are the server's own replies, captured offline from the code. The three screenshots are the repository's own: each is a workbook generated from a spec, opened in Tableau Public 2026.2.0 and photographed untouched, on synthetic data. The map screenshot keeps its Mapbox and OpenStreetMap credit.</p>
+      <p>Narration: Kokoro-82M, voice af_heart. Music: "Pop 07" by Grigoriy Nuzhny (Mixkit). Sound effects: Mixkit.</p>
+      <p>Type: SF Pro. Icons: HIG Native line glyphs. <a href="https://github.com/andyyaro/tableau-public-authoring-mcp/tree/main/media/launch-film">How the film was made</a>.</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

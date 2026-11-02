@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **The launch film.** A 68-second film of how the server works, on one architecture board: the
+  JSON spec and the dry run that catches a typo, the compiler and the Hyper extract, Tableau
+  Public opening the file, and publishing behind its guards, with the server's real replies and
+  the repository's real screenshots. It plays at the top of the README and on its
+  [watch page](https://andyyaro.github.io/tableau-public-authoring-mcp/film.html), with captions
+  and a transcript. Its source is in [media/launch-film/](media/launch-film/); the MP4 is a
+  release asset, not in git, and [film.yml](.github/workflows/film.yml) publishes the page to
+  GitHub Pages.
+
 ## [0.1.0] - 2026-07-27
 
 First working release. Authors Tableau workbooks, validates them in the real

@@ -1,0 +1,61 @@
+{
+ "track": "Pop 07 (Grigoriy Nuzhny, Mixkit 699)",
+ "bpm": 90,
+ "beat": 0.667,
+ "bar": 2.667,
+ "drop": 8.0,
+ "end_card": 58.667,
+ "track_ending": 58.667,
+ "fade_out": [
+  65.0,
+  67.5
+ ],
+ "duration": 67.5,
+ "film_bars": [
+  0.0,
+  2.667,
+  5.333,
+  8.0,
+  10.667,
+  13.333,
+  16.0,
+  18.667,
+  21.333,
+  24.0,
+  26.667,
+  29.333,
+  32.0,
+  34.667,
+  37.333,
+  40.0,
+  42.667,
+  45.333,
+  48.0,
+  50.667,
+  53.333,
+  56.0,
+  58.667,
+  61.333,
+  64.0,
+  66.667
+ ],
+ "segments": [
+  [
+   0.0,
+   56.0
+  ],
+  [
+   8.0,
+   69.333
+  ],
+  [
+   53.333,
+   109.333
+  ]
+ ],
+ "segment_notes": [
+  "track bars 21-23, the breakdown, under the hook",
+  "track bar 26 on the drop: the groove on a downbeat (bars 24-25 skipped)",
+  "track bars 41-42 repeated (light), then the outro (bar 43) on the end card and the fade"
+ ]
+}

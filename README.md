@@ -4,6 +4,12 @@
 
 # Tableau Public Authoring MCP
 
+<p align="center">
+  <a href="https://andyyaro.github.io/tableau-public-authoring-mcp/film.html"><img src="docs/assets/readme/tableau-mcp-in-action.webp" alt="The architecture board from the launch film: a workbook spec in JSON goes through a dry run, a typo in a field name fails with the server's real error and the list of available fields, the fix turns it valid, then the compiler writes the workbook, the CSV becomes a Hyper extract, the checks pass and the .twbx is packaged with its three entries. Select to watch the 68-second film." width="920"></a>
+</p>
+
+<p align="center"><b>Watch the 68-second launch film:</b> <a href="https://andyyaro.github.io/tableau-public-authoring-mcp/film.html">with sound and captions</a> · <a href="https://andyyaro.github.io/tableau-public-authoring-mcp/film/tableau-mcp-launch.mp4">MP4, 13.8 MB</a> · <a href="media/launch-film/">how it was made</a></p>
+
 An MCP server that **authors** Tableau workbooks from a declarative spec, **validates**
 them by opening them in the installed Tableau Public application, and **publishes**
 through Tableau's own visible desktop workflow.

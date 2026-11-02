@@ -1,0 +1,356 @@
+<template>
+  <!-- s2-board: ONE board for s2 (spec) .. s6 (overview + proof), as the CERFODES arch-diagram scene. A 1920 x 1080 world
+       moved by the camera (#b-cam), masked on screen to 100 < y < 916 (top band: s2-titles.html; bottom: the subtitles).
+       Columns (groups the camera can dim): A "Who asks" x 30-330, B the server 362-842, C "On this Mac" 874-1434,
+       D "Publishing" 1466-1890. Close shots at zoom >= 1.6; at the zoom 1.0 overview secondary lines fold away. Status dots
+       follow the legend (green: no Tableau needed, indigo: needs Tableau Public, orange: public). Strings: FACTS.md. -->
+  <style>
+    #b-root { position: absolute; inset: 0; overflow: hidden; }
+    #b-fade { position: absolute; inset: 0;
+              -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 80px, #000 100px, #000 916px, transparent 936px);
+              mask-image: linear-gradient(to bottom, transparent 0, transparent 80px, #000 100px, #000 916px, transparent 936px); }
+    #b-cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .grp { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    .wires { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
+    .wires .w { fill: none; stroke: var(--system-gray); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .wires .w.dash { stroke-dasharray: 7 7; }
+    .wires .h { fill: var(--system-gray); stroke: none; }
+    .wires .mk { fill: none; stroke: #fff; stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
+
+    .a-zone { position: absolute; border-radius: var(--radius-group); background: var(--fill-quaternary); }
+    .a-zl { position: absolute; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+    .a-zl b { font-size: 22px; line-height: 28px; font-weight: 600; color: var(--label-primary); }
+    .a-zl span { font-size: 19px; line-height: 24px; color: var(--label-secondary); }
+    .a-sec { position: absolute; font-size: 22px; line-height: 28px; font-weight: 600; color: var(--label-secondary); white-space: nowrap; }
+
+    /* cards: icon tile left, text right, both centred vertically (no card shows an empty bottom), no shadow, no border */
+    .a-card { position: absolute; display: flex; gap: 14px; align-items: center; padding: 14px 16px;
+              border-radius: 18px; background: var(--background-primary); }
+    .a-tile { flex: none; width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+              color: #fff; font-size: 26px; }
+    .a-tx { min-width: 0; display: flex; flex-direction: column; }
+    .a-t { font-size: 23px; line-height: 28px; font-weight: 600; color: var(--label-primary); white-space: nowrap; }
+    .a-s { margin-top: 2px; font-size: 18px; line-height: 23px; color: var(--label-secondary); }
+    .a-st { margin-top: 6px; display: flex; align-items: center; gap: 9px; font-size: 22px; line-height: 28px; font-weight: 500;
+            color: var(--label-primary); white-space: nowrap; }
+    .a-sts { display: flex; flex-wrap: wrap; column-gap: 20px; }
+    .a-dot { display: block; flex: none; width: 11px; height: 11px; border-radius: 50%; }
+    .d-green { background: var(--system-green); }
+    .d-indigo { background: var(--system-indigo); }
+    .d-orange { background: var(--system-orange); }
+    .d-red { background: var(--system-red); }
+    .a-chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .a-chip { display: block; padding: 3px 11px; border-radius: var(--radius-capsule); background: var(--fill-tertiary);
+              font-size: 17px; line-height: 22px; font-weight: 500; color: var(--label-primary); white-space: nowrap; }
+    #a-pkg .a-chips { margin-top: 6px; gap: 5px; }
+    #a-pkg .a-chip { font-size: 16px; line-height: 20px; padding: 2px 10px; }
+    .a-note { margin-top: 6px; font-size: 17px; line-height: 21px; color: var(--label-secondary); }
+    .a-wl { position: absolute; font-size: 17px; line-height: 21px; font-weight: 500; color: var(--label-secondary); white-space: nowrap; }
+
+    /* cards that open to show their content (the spec, the dry run): header row on top, details below, clipped by height */
+    .a-card.a-col { flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; gap: 0; overflow: hidden; }
+    .a-hd { flex: none; display: flex; gap: 14px; align-items: center; padding: 0 16px; }
+
+    /* the spec, as the README prints it (pretty-printed), in the system face: keys grey, values black */
+    #j-block { margin: 0 16px 16px; padding: 10px 14px; border-radius: 12px; background: var(--fill-quaternary); }
+    .j-l { font-size: 17px; line-height: 22px; color: var(--label-primary); white-space: nowrap; }
+    .j-l.i1 { padding-left: 16px; }
+    .j-l.i2 { padding-left: 32px; }
+    .j-l .k { color: var(--label-secondary); }
+    .j-f { border-radius: 6px; padding: 0 2px; margin: 0 -2px; }
+    #j-color { display: inline-grid; }
+    #j-color > span { grid-area: 1 / 1; }
+    #j-typo { color: #c32b2e; }
+
+    /* the dry run's real error (validate_typo_Stauts) */
+    #v-err { margin: 0 16px 16px; padding: 12px 14px; border-radius: 12px; background: var(--fill-quaternary); }
+    .v-eh { display: flex; align-items: center; gap: 8px; font-size: 18px; line-height: 23px; font-weight: 600; color: var(--label-primary); }
+    .v-eh .ic { font-size: 22px; color: var(--system-red); }
+    .v-et { margin-top: 4px; font-size: 18px; line-height: 23px; color: var(--label-primary); }
+    .v-av { margin-top: 10px; font-size: 17px; line-height: 21px; color: var(--label-secondary); }
+    #v-chips { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+    #v-chips .a-chip { font-size: 16px; line-height: 20px; padding: 2px 10px; }
+    #v-st { display: inline-grid; margin-top: 6px; }
+    #v-st > .a-st { grid-area: 1 / 1; margin-top: 0; }
+
+    /* five load rules (VALIDATION_REPORT layer 3): each row a red x that turns into a green check */
+    .r-row { margin-top: 8px; display: flex; align-items: center; gap: 10px; font-size: 16px; line-height: 21px; color: var(--label-primary); white-space: nowrap; }
+    .r-ic { display: inline-grid; flex: none; font-size: 22px; }
+    .r-ic > svg { grid-area: 1 / 1; }
+    .r-x { color: var(--system-red); }
+    .r-ok { color: var(--system-green); }
+    #r-rows { margin-top: 6px; }
+
+    /* real screenshots, untouched: white rounded window cards, images uncropped */
+    .win { position: absolute; padding: 8px; border-radius: 18px; background: var(--background-primary); }
+    .win img { display: block; width: 100%; height: auto; border-radius: 10px; }
+    .w-cap { margin-top: 6px; padding: 0 2px; color: var(--label-secondary); white-space: nowrap; }
+    #w-dash .w-cap { font-size: 12px; line-height: 16px; }
+    #w-map .w-cap, #w-bar .w-cap { font-size: 10.5px; line-height: 14px; }
+
+    /* the publish refusal (publish_without_profile, verbatim) */
+    #a-refuse { flex-direction: column; align-items: stretch; justify-content: center; gap: 0; }
+    .x-h { display: flex; align-items: flex-start; gap: 10px; font-size: 19px; line-height: 24px; font-weight: 600; color: var(--label-primary); }
+    .x-h .ic { flex: none; margin-top: 1px; font-size: 22px; color: var(--system-red); }
+    .x-t { margin-top: 6px; padding-left: 32px; font-size: 17px; line-height: 22px; color: var(--label-secondary); }
+
+    /* tests: everything here is read at zoom 1.0, so nothing is under 22 px */
+    #a-tests { flex-direction: column; align-items: stretch; justify-content: center; gap: 0; }
+    #a-tests .a-hd { padding: 0; }
+    .t-sub { font-size: 22px; line-height: 27px; color: var(--label-secondary); }
+    .t-big { margin-top: 8px; display: flex; align-items: center; gap: 14px; }
+    #t-num { font-size: 64px; line-height: 64px; font-weight: 700; letter-spacing: -1px; color: var(--label-primary); font-variant-numeric: tabular-nums; min-width: 122px; }
+    .t-pass { font-size: 22px; line-height: 27px; font-weight: 500; color: var(--label-primary); }
+    #t-live { margin-top: 8px; }
+    #t-det { margin-top: 2px; font-size: 22px; line-height: 27px; color: var(--label-secondary); white-space: nowrap; }
+  </style>
+  <div id="b-root" data-composition-id="s2-board" data-width="1920" data-height="1080">
+    <div id="b-fade">
+      <div id="b-cam" data-layout-allow-overflow data-layout-allow-overlap>
+        <!-- A: who asks (the cards in CARDS below are generated into #cards-A etc., under the opening cards) -->
+        <div id="g-A" class="grp">
+          <svg id="wires-A" class="wires" viewBox="0 0 1920 1080"></svg>
+          <div id="a-sec-who" class="a-sec" style="left:30px; top:104px">Who asks</div>
+          <div id="cards-A"></div>
+          <div id="a-spec" class="a-card a-col" style="left:30px; top:260px; width:300px; height:96px" data-layout-allow-overflow>
+            <div class="a-hd" style="height:96px">
+              <div class="a-tile" style="background:var(--system-blue)"><svg class="ic"><use href="#ic-doc" /></svg></div>
+              <div class="a-tx"><div class="a-t">Workbook spec</div><div class="a-s">declarative JSON</div></div>
+            </div>
+            <div id="j-block"></div>
+          </div>
+        </div>
+        <!-- B: the server -->
+        <div id="g-B" class="grp">
+          <div id="a-zB" class="a-zone" style="left:362px; top:92px; width:480px; height:812px"></div>
+          <div id="a-zB-l" class="a-zl" style="left:382px; top:104px"><b>tableau-public-authoring</b><span>MCP server · 10 tools</span></div>
+          <svg id="wires-B" class="wires" viewBox="0 0 1920 1080"></svg>
+          <div id="cards-B"></div>
+          <div id="a-val" class="a-card a-col" style="left:382px; top:140px; width:440px; height:116px" data-layout-allow-overflow>
+            <div class="a-hd" style="height:116px">
+              <div class="a-tile" style="background:var(--system-teal)"><svg class="ic"><use href="#ic-text-page-badge-magnifyingglass" /></svg></div>
+              <div class="a-tx"><div class="a-t">validate_workbook_spec</div><div class="a-s">dry run · writes nothing</div>
+                <div id="v-st">
+                  <div class="a-st" id="v-st-err"><i class="a-dot d-red"></i><span>error</span></div>
+                  <div class="a-st" id="v-st-ok"><i class="a-dot d-green"></i><span>valid</span></div>
+                </div></div>
+            </div>
+            <div id="v-err">
+              <div class="v-eh"><svg class="ic"><use href="#ic-xmark-circle-fill" /></svg><span>specification error:</span></div>
+              <div class="v-et">worksheets[0].color: field 'Stauts' does not exist in data source 'sites'.</div>
+              <div class="v-av">Available:</div>
+              <div id="v-chips"><span class="a-chip">Annual Sessions</span><span class="a-chip">Assessment Date</span><span class="a-chip">Charger Count</span><span class="a-chip">City</span><span class="a-chip">Estimated Cost</span><span class="a-chip">Latitude</span><span class="a-chip">Longitude</span><span class="a-chip">Readiness Score</span><span class="a-chip">Site Name</span><span class="a-chip">State</span><span class="a-chip" id="v-chip-status">Status</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- C: on this Mac -->
+        <div id="g-C" class="grp">
+          <div id="a-zC" class="a-zone" style="left:874px; top:92px; width:560px; height:812px"></div>
+          <div id="a-zC-l" class="a-zl" style="left:894px; top:104px"><b>On this Mac</b><span>the real desktop app</span></div>
+          <svg id="wires-C" class="wires" viewBox="0 0 1920 1080"></svg>
+          <div id="cards-C"></div>
+          <div id="a-rules" class="a-card" style="left:894px; top:284px; width:520px; height:240px; flex-direction:column; align-items:stretch; justify-content:center; gap:0">
+            <div class="a-hd" style="padding:0">
+              <div class="a-tile" style="background:var(--system-orange)"><svg class="ic"><use href="#ic-exclamationmark-triangle" /></svg></div>
+              <div class="a-tx"><div class="a-t">Five load rules</div><div class="a-s">found only by opening the file in Tableau</div></div>
+            </div>
+            <div id="r-rows"></div>
+          </div>
+          <div id="wins"></div>
+        </div>
+        <!-- D: publishing -->
+        <div id="g-D" class="grp">
+          <svg id="wires-D" class="wires" viewBox="0 0 1920 1080"></svg>
+          <div id="a-sec-pub" class="a-sec" style="left:1466px; top:104px">Publishing</div>
+          <div id="a-wl-public" class="a-wl" style="left:1690px; top:288px">public</div>
+          <div id="cards-D"></div>
+          <div id="a-refuse" class="a-card" style="left:1466px; top:678px; width:424px; height:136px">
+            <div class="x-h"><svg class="ic"><use href="#ic-xmark-circle-fill" /></svg><span>refusing to publish: 'profile' is required.</span></div>
+            <div class="x-t">Without it the server cannot check whether a workbook of this name is already published, and publishing would silently replace it.</div>
+          </div>
+          <div id="a-tests" class="a-card" style="left:1466px; top:678px; width:424px; height:224px">
+            <div class="a-hd">
+              <div class="a-tile" style="background:var(--system-green); --knock: var(--system-green)"><svg class="ic"><use href="#ic-checkmark-circle-fill" /></svg></div>
+              <div class="a-tx"><div class="a-t">pytest</div><div class="t-sub">commit d77186f</div></div>
+            </div>
+            <div class="t-big"><div id="t-num">507</div><div class="t-pass">pass without<br />Tableau installed</div></div>
+            <div class="a-st" id="t-live"><i class="a-dot d-indigo"></i><span>15 live tests drive the real app</span></div>
+            <div id="t-det">.twb byte-identical on rebuild</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const TM = window.TM, VO = window.VO, S0 = TM.s2[0];
+      const W = KIT.W(S0), F = (t) => t - S0, END = (k) => F(VO[k].end);
+
+      // the board's parts (cards, the spec, the five load rules, the screenshots, the wires) are a table in assets/board-parts.js
+      const WR = window.BOARD_PARTS();
+
+      // ---- camera: frame world point (cx, cy) at zoom s in the screen area between the two bands (y 100..916)
+      const cam = document.getElementById("b-cam");
+      const C = (cx, cy, s) => ({ x: 960 - cx * s, y: 508 - cy * s, scale: s });
+      const tl = gsap.timeline({ paused: true });
+      const m = KIT.moves(tl);
+      const A = (id) => `#a-${id}`;
+      const move = (t, cx, cy, s, d = 1.3) => tl.to(cam, { ...C(cx, cy, s), duration: d, ease: "power2.inOut" }, t);
+      const wire = (id, at, d) => m.wire(WR[id], at, d);
+      const dim = (sel, at, v) => tl.to(sel, { opacity: v, duration: 0.8, ease: "power1.inOut" }, at);
+      const HL = "rgba(0, 136, 255, 0.16)", HL0 = "rgba(0, 136, 255, 0)", RD = "rgba(255, 56, 60, 0.12)", RD0 = "rgba(255, 56, 60, 0)";
+
+      // everything starts hidden; each part arrives on its word
+      gsap.set(["claude", "csv", "spec", "comp", "hyper", "checks", "pkg", "val", "tab", "rules", "public", "pub", "guard", "refuse", "tests"].map(A), { opacity: 0 });
+      gsap.set(["#a-sec-who", "#a-sec-pub", "#a-zB", "#a-zB-l", "#a-zC", "#a-zC-l", "#w-dash", "#w-map", "#w-bar", ".w-cap", "#a-wl-public"], { opacity: 0 });
+      gsap.set([".a-st", ".a-chips", ".a-note", ".j-l", "#v-err > *", "#v-chips .a-chip", ".r-row", ".r-ok", "#j-typo", ".t-big", "#t-det"], { opacity: 0 });
+
+      // ===== s2: describe a workbook in JSON; the dry run catches a typo, with the right names =====
+      tl.fromTo("#b-fade", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0);
+      tl.fromTo(cam, C(436, 370, 1.58), { ...C(436, 370, 1.5), duration: F(TM.s3[0]) - 0.1, ease: "none" }, 0);
+      m.fade("#a-sec-who", 0.25, 0.4);
+      m.pop(A("claude"), 0.35);
+      m.fade("#a-zB", 0.45, 0.6);
+      m.fade("#a-zB-l", 0.65);
+      m.ph(A("val"), 0.75);
+      wire("w-claude", 0.95);
+      m.ph(A("spec"), W("v04", "describe") - 0.1);
+      m.light(A("spec"), W("v04", "json") - 0.05);
+      const jOpen = W("v04", "json") + 0.25;
+      tl.to(A("spec"), { height: 374, duration: 0.6, ease: "power2.inOut" }, jOpen);
+      tl.fromTo(".j-l", { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", stagger: 0.05 }, jOpen + 0.2);
+      wire("w-spec", W("v05", "dry") - 0.3);
+      m.light(A("val"), W("v05", "dry"));
+      // "checks every field against the data": the three field names are looked up in turn
+      ["#j-f1", "#j-f2", "#j-f3"].forEach((s, i) => tl.to(s, { backgroundColor: HL, duration: 0.25, ease: "power1.out" }, W("v05", ["every", "field", "against"][i])));
+      tl.to(["#j-f1", "#j-f2", "#j-f3"], { backgroundColor: HL0, duration: 0.35, ease: "power1.inOut" }, W("v05", "data") + 0.25);
+      // "so a typo": Status becomes Stauts; "fails": the dry run opens its real error; "with the right names": the field list
+      const ty = W("v05", "typo");
+      tl.to("#j-ok", { opacity: 0, duration: 0.2 }, ty);
+      tl.to("#j-typo", { opacity: 1, duration: 0.2 }, ty);
+      tl.to("#j-f2", { backgroundColor: RD, duration: 0.25 }, ty);
+      const fl = W("v05", "fails") - 0.1;
+      tl.to(A("val"), { height: 377, duration: 0.55, ease: "power2.inOut" }, fl);
+      tl.fromTo("#v-err > *:not(#v-chips)", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out", stagger: 0.08 }, fl + 0.2);
+      tl.set("#v-chips", { opacity: 1 }, fl + 0.2);
+      m.dot("#v-st-err", fl + 0.15);
+      tl.fromTo("#v-chips .a-chip", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)", stagger: 0.035 }, W("v05", "right") - 0.05);
+      tl.to("#v-chip-status", { backgroundColor: HL, duration: 0.3, ease: "power1.out" }, W("v05", "names") + 0.15);
+      // fixed: Status again, the error folds away, the dry run says valid
+      const fx = END("v05") + 0.3;
+      tl.to("#j-typo", { opacity: 0, duration: 0.2 }, fx);
+      tl.to("#j-ok", { opacity: 1, duration: 0.2 }, fx);
+      tl.to("#j-f2", { backgroundColor: RD0, duration: 0.3 }, fx);
+      tl.to("#v-err", { opacity: 0, duration: 0.35, ease: "power1.inOut" }, fx);
+      tl.to(A("val"), { height: 116, duration: 0.42, ease: "power2.inOut" }, fx);
+      m.out("#v-st-err", fx, 0.12);
+      m.dot("#v-st-ok", fx + 0.1);
+
+      // ===== s3: the compiler writes the workbook; each CSV becomes the Hyper extract Tableau Public requires =====
+      const T3 = F(TM.s3[0]);
+      move(T3, 436, 500, 1.6);
+      tl.to(A("spec"), { height: 96, duration: 0.55, ease: "power2.inOut" }, T3 + 0.05);
+      m.out("#j-block", T3, 0.2);
+      ["comp", "hyper", "checks", "pkg"].forEach((id, i) => m.ph(A(id), T3 + 0.2 + i * 0.07));
+      m.ph(A("csv"), T3 + 0.3);
+      wire("w-v1", W("v06", "compiler") - 0.25, 0.25);
+      m.light(A("comp"), W("v06", "compiler"));
+      m.dot("#a-comp-st1", W("v06", "workbook"));
+      m.light(A("csv"), W("v06", "each") - 0.05);
+      wire("w-csv", W("v06", "csv"), 0.35);
+      wire("w-v2", W("v06", "into") - 0.1, 0.25);
+      m.light(A("hyper"), W("v06", "hyper") - 0.05);
+      m.dot("#a-hyper-st1", W("v06", "hyper") + 0.45);
+      move(W("v06", "tableau") + 0.1, 436, 646, 1.6);
+      m.fade("#a-hyper-note", W("v06", "requires") - 0.05, 0.45);
+      wire("w-v3", END("v06") - 0.75, 0.25);
+      m.light(A("checks"), END("v06") - 0.55);
+      m.dot("#a-checks-st1", END("v06") - 0.15);
+      wire("w-v4", END("v06") - 0.3, 0.25);
+      m.light(A("pkg"), END("v06") - 0.1);
+      tl.set("#a-pkg-chips", { opacity: 1 }, END("v06") + 0.05);
+      m.chips("#a-pkg-chips .a-chip", END("v06") + 0.05);
+      m.dot("#a-pkg-st1", END("v06") + 0.35);
+
+      // ===== s4: it opens the file in the real Tableau Public app and photographs it; five load rules; the screenshots =====
+      const T4 = F(TM.s4[0]), M4 = T4 + 0.3;
+      dim(["#g-A", "#g-B"], M4 + 0.1, 0.22);
+      move(M4, 1154, 322, 1.75, 1.4);
+      m.fade("#a-zC", M4 + 0.2, 0.6);
+      m.fade("#a-zC-l", M4 + 0.4);
+      m.ph(A("tab"), M4 + 0.45);
+      m.ph(A("rules"), M4 + 0.75);
+      wire("w-pkg", W("v07", "opens"), 0.7);
+      m.light(A("tab"), W("v07", "tableau") - 0.05);
+      m.dot("#a-tab-st1", W("v07", "app") - 0.05);
+      m.dot("#a-tab-st2", W("v07", "and") + 0.1);
+      m.dot("#a-tab-st3", W("v07", "photographs"));
+      m.light(A("rules"), W("v08", "five"));
+      tl.fromTo(".r-row", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out", stagger: 0.16 }, W("v08", "load") - 0.55);
+      const rf = W("v08", "only");
+      [1, 2, 3, 4, 5].forEach((n, i) => {
+        tl.to(`.r-row:nth-child(${n}) .r-x`, { opacity: 0, duration: 0.2 }, rf + i * 0.18);
+        tl.fromTo(`.r-row:nth-child(${n}) .r-ok`, { opacity: 0, scale: 0.6, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, rf + i * 0.18);
+      });
+      m.out(A("rules"), END("v08") + 0.1, 0.35, -10);
+      move(W("v09", "every") - 0.1, 1154, 481, 1.95);
+      m.pop("#w-dash", W("v09", "screenshot") - 0.1, 14);
+      m.fade("#w-dash .w-cap", W("v09", "screenshot") + 0.4, 0.4);
+      move(W("v09", "untouched") - 0.15, 1154, 794, 2.6);
+      dim("#w-pkg", W("v09", "untouched") - 0.15, 0.22);
+      m.pop("#w-map", W("v09", "untouched") + 0.1, 14);
+      m.pop("#w-bar", W("v09", "untouched") + 0.25, 14);
+      m.fade(["#w-map .w-cap", "#w-bar .w-cap"], W("v09", "untouched") + 0.75, 0.4);
+
+      // ===== s5: publishing drives Tableau's own save flow, in your session; the guards =====
+      const T5 = F(TM.s5[0]);
+      dim("#g-C", T5 + 0.1, 0.22);
+      move(T5, 1560, 304, 1.7, 1.5);
+      m.fade("#a-sec-pub", T5 + 0.2, 0.4);
+      m.ph(A("pub"), T5 + 0.3);
+      m.ph(A("public"), T5 + 0.4);
+      wire("w-pub", W("v10", "drives") - 0.2, 0.7);
+      m.light(A("pub"), W("v10", "drives") + 0.3);
+      tl.set("#a-pub-chips", { opacity: 1 }, W("v10", "save"));
+      m.chips("#a-pub-chips .a-chip", W("v10", "save"));
+      m.dot("#a-pub-st1", W("v10", "signed"));
+      wire("w-public", W("v10", "session") - 0.25, 0.3);
+      m.fade("#a-wl-public", W("v10", "session") - 0.05, 0.4);
+      m.light(A("public"), W("v10", "session"));
+      tl.set("#a-public-chips", { opacity: 1 }, W("v10", "session") + 0.35);
+      m.chips("#a-public-chips .a-chip", W("v10", "session") + 0.35);
+      m.dot("#a-public-st1", W("v10", "session") + 0.6);
+      move(W("v11", "it") - 0.15, 1560, 577, 1.45);
+      m.ph(A("guard"), W("v11", "it") - 0.2);
+      wire("w-guard", W("v11", "it") + 0.05, 0.25);
+      m.light(A("guard"), W("v11", "never"));
+      tl.set("#a-guard-chips", { opacity: 1 }, W("v11", "wont"));
+      m.chips("#a-guard-chips .a-chip", W("v11", "wont"), 0.14);
+      m.pop(A("refuse"), W("v11", "replace"), 14);
+      m.dot("#a-guard-st1", W("v11", "unless"));
+      m.out(A("refuse"), END("v11") - 0.15, 0.35, 10);
+
+      // ===== s6: the whole board, held still; 507 tests pass without Tableau =====
+      const T6 = F(TM.s6[0]);
+      move(T6, 960, 500, 1.0, 1.3);
+      dim(["#g-A", "#g-B", "#g-C", "#w-pkg"], T6 + 0.15, 1);
+      // at zoom 1.0 only what reads at that size stays; the secondary lines fade, then fold away while the camera moves
+      const FOLD = ".a-s, .a-chips, .a-note, .a-wl, .w-cap, .a-zl span";
+      tl.to(FOLD, { opacity: 0, duration: 0.35, ease: "power1.out" }, T6 + 0.1);
+      tl.set(FOLD, { display: "none" }, T6 + 0.5);
+      m.ph(A("tests"), T6 + 0.2);
+      // the tests card lights its header; the number counts up, the live line and the detail arrive on their words
+      const n0 = W("v12", "507");
+      m.light(A("tests"), n0 - 0.05, "#a-tests .a-hd");
+      const num = document.getElementById("t-num"), cnt = { v: 0 };
+      tl.fromTo(cnt, { v: 0 }, { v: 507, duration: 1.2, ease: "power2.out", onUpdate: () => { num.textContent = String(Math.round(cnt.v)); } }, n0);
+      tl.fromTo(".t-big", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, n0);
+      m.dot("#t-live", W("v12", "15") - 0.05);
+      tl.fromTo("#t-det", { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, W("v12", "drive"));
+      // the board gives way to the end card (s7 starts at TM.end_card)
+      m.out("#b-fade", F(TM.end_card), 0.55);
+
+      window.__timelines["s2-board"] = tl;
+    })();
+  </script>
+</template>
